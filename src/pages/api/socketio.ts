@@ -17,17 +17,29 @@ interface NextApiResponseWithSocket extends NextApiResponse {
   socket: SocketWithIO;
 }
 
-// Use environment variables with defaults
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com';
 const MQTT_BASE_TOPIC = process.env.MQTT_BASE_TOPIC || 'sensorflow/demo/#';
-// Maintain a list for potential multiple base topics or specific subscriptions
-const MQTT_TOPICS_SUBSCRIBE = [MQTT_BASE_TOPIC]; 
+const MQTT_TOPICS_SUBSCRIBE = [MQTT_BASE_TOPIC];
+
+const MAX_HISTORY_POINTS_PER_SENSOR = 300; // Approx 5 mins of data at 1s interval
+
+interface HistoryPoint {
+  value: number;
+  timestamp: string;
+}
+
+interface SensorDataEntry {
+  history: HistoryPoint[];
+  currentUnit?: string;
+}
+
+const sensorDataStore = new Map<string, SensorDataEntry>();
 
 let mqttClient: mqtt.MqttClient | null = null;
 
 export const config = {
   api: {
-    bodyParser: false, 
+    bodyParser: false,
   },
 };
 
@@ -37,12 +49,12 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
     if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'OPTIONS') {
       console.warn(`[SocketIO API] Method ${req.method} not allowed. Sending 405.`);
       res.status(405).json({ message: `Method ${req.method} Not Allowed` });
-      return; 
+      return;
     }
     if (req.method === 'OPTIONS') {
-        console.log('[SocketIO API] Responding to OPTIONS request.');
-        res.status(200).end();
-        return;
+      console.log('[SocketIO API] Responding to OPTIONS request.');
+      res.status(200).end();
+      return;
     }
 
     if (!res.socket.server.io) {
@@ -50,14 +62,14 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
       console.log(`[SocketIO API] Attempting to connect to MQTT broker at: ${MQTT_BROKER_URL}`);
       const httpServer: HTTPServer = res.socket.server;
       const io = new IOServer(httpServer, {
-        path: '/api/socketio', 
+        path: '/api/socketio',
         addTrailingSlash: false,
         cors: {
-          origin: "*", 
+          origin: "*",
           methods: ["GET", "POST"]
         }
       });
-      res.socket.server.io = io; 
+      res.socket.server.io = io;
 
       if (!mqttClient || (!mqttClient.connected && !mqttClient.reconnecting)) {
         console.log('[SocketIO API] Setting up new MQTT client connection.');
@@ -86,7 +98,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
           console.log('[SocketIO API] MQTT attempting to reconnect...');
           io.emit('mqtt_status', { connected: false, message: 'MQTT reconnecting...' });
         });
-        
+
         mqttClient.on('close', () => {
           console.log('[SocketIO API] MQTT connection closed.');
           io.emit('mqtt_status', { connected: false, message: 'MQTT connection closed' });
@@ -104,23 +116,32 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             let finalPayload: Record<string, any> = {};
             if (typeof parsedPayload === 'object' && parsedPayload !== null) {
               finalPayload = { ...parsedPayload };
-            } else { 
-              finalPayload = { value: parseFloat(parsedPayload) }; 
+            } else {
+              finalPayload = { value: parseFloat(parsedPayload) };
             }
-            
+
             if (typeof finalPayload.value === 'undefined' || finalPayload.value === null || isNaN(Number(finalPayload.value))) {
-                 console.warn(`[SocketIO API] Parsed value is invalid or missing for topic ${topic}. Raw message: ${message.toString()}. Using raw message as value attempt.`);
-                 finalPayload.value = parseFloat(message.toString()); // Attempt to parse raw message as float
-                 if(isNaN(finalPayload.value)) {
-                    console.error(`[SocketIO API] Critical: Could not determine a valid numeric value for ${topic}. Skipping message.`);
-                    io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid value (not parseable to number).` });
-                    return;
-                 }
+              console.warn(`[SocketIO API] Parsed value is invalid or missing for topic ${topic}. Raw message: ${message.toString()}. Attempting to use raw message.`);
+              finalPayload.value = parseFloat(message.toString());
+              if(isNaN(finalPayload.value)) {
+                console.error(`[SocketIO API] Critical: Could not determine a valid numeric value for ${topic}. Skipping message.`);
+                io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid value (not parseable to number).` });
+                return;
+              }
             }
-            // Ensure timestamp is always present, prefer original if available
             finalPayload.timestamp = finalPayload.timestamp || new Date().toISOString();
-            // Ensure unit is present, prefer original, default to 'N/A'
             finalPayload.unit = finalPayload.unit || 'N/A';
+            
+            // Update history buffer
+            if (!sensorDataStore.has(topic)) {
+              sensorDataStore.set(topic, { history: [], currentUnit: finalPayload.unit });
+            }
+            const sensorEntry = sensorDataStore.get(topic)!;
+            sensorEntry.currentUnit = finalPayload.unit;
+            sensorEntry.history.push({ value: finalPayload.value, timestamp: finalPayload.timestamp });
+            if (sensorEntry.history.length > MAX_HISTORY_POINTS_PER_SENSOR) {
+              sensorEntry.history.splice(0, sensorEntry.history.length - MAX_HISTORY_POINTS_PER_SENSOR);
+            }
             
             io.emit('sensor_data', { topic, payload: finalPayload });
           } catch (e) {
@@ -128,30 +149,36 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             console.warn(`[SocketIO API] Failed to parse MQTT message as JSON from topic ${topic}: ${parseError}. Raw: "${message.toString()}". Attempting to treat as raw value.`);
             const numericValue = parseFloat(message.toString());
             if (!isNaN(numericValue)) {
-                console.log(`[SocketIO API] Emitting raw numeric value for topic ${topic} after JSON parse fail.`);
-                io.emit('sensor_data', {
-                    topic,
-                    payload: {
-                        value: numericValue,
-                        unit: 'N/A', // default unit for raw values
-                        timestamp: new Date().toISOString()
-                    }
-                });
+              const timestamp = new Date().toISOString();
+              const unit = 'N/A'; // Default unit for raw values
+              if (!sensorDataStore.has(topic)) {
+                sensorDataStore.set(topic, { history: [], currentUnit: unit });
+              }
+              const sensorEntry = sensorDataStore.get(topic)!;
+              sensorEntry.currentUnit = unit;
+              sensorEntry.history.push({ value: numericValue, timestamp });
+              if (sensorEntry.history.length > MAX_HISTORY_POINTS_PER_SENSOR) {
+                 sensorEntry.history.splice(0, sensorEntry.history.length - MAX_HISTORY_POINTS_PER_SENSOR);
+              }
+              io.emit('sensor_data', {
+                topic,
+                payload: { value: numericValue, unit, timestamp }
+              });
             } else {
-                console.error(`[SocketIO API] Message on topic ${topic} is not valid JSON and not a parseable number: "${message.toString()}"`);
-                io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid format (not JSON or number): ${parseError}` });
+              console.error(`[SocketIO API] Message on topic ${topic} is not valid JSON and not a parseable number: "${message.toString()}"`);
+              io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid format (not JSON or number): ${parseError}` });
             }
           }
         });
       } else {
-         console.log('[SocketIO API] MQTT client already initialized. State:', 
-                    mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
+        console.log('[SocketIO API] MQTT client already initialized. State:',
+          mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
       }
 
       io.on('connection', (socket: Socket) => {
         console.log('[SocketIO API] Socket.IO client connected:', socket.id);
         if (mqttClient) {
-          const statusMessage = mqttClient.connected 
+          const statusMessage = mqttClient.connected
             ? `Connected to MQTT broker (${MQTT_BROKER_URL})`
             : (mqttClient.reconnecting ? 'MQTT reconnecting...' : 'MQTT not connected');
           socket.emit('mqtt_status', {
@@ -159,8 +186,16 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             message: statusMessage,
           });
         } else {
-           socket.emit('mqtt_status', { connected: false, message: 'MQTT client not initialized' });
+          socket.emit('mqtt_status', { connected: false, message: 'MQTT client not initialized' });
         }
+
+        // Send initial historical data for all known sensors to the newly connected client
+        sensorDataStore.forEach((data, topic) => {
+          if (data.history.length > 0) {
+            console.log(`[SocketIO API] Sending initial_sensor_history for ${topic} to ${socket.id}`);
+            socket.emit('initial_sensor_history', { topic: topic, history: data.history, unit: data.currentUnit });
+          }
+        });
 
         socket.on('disconnect', (reason) => {
           console.log('[SocketIO API] Socket.IO client disconnected:', socket.id, 'Reason:', reason);
@@ -171,7 +206,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
     } else {
       console.log('[SocketIO API] Socket.IO server already running.');
     }
-    
+
     console.log('[SocketIO API] Ending Socket.IO HTTP handler response successfully.');
     res.end();
 

@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableCaption } from "@/components/ui/table";
-import ConnectionStatusIndicator from "@/components/dashboard/ConnectionStatusIndicator"; // Used in Header
-import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -20,7 +20,7 @@ import {
   TimeScale,
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
-import { format as formatDate, parseISO } from 'date-fns';
+import { format as formatDate, parseISO, subMinutes, isAfter } from 'date-fns';
 
 ChartJS.register(
   CategoryScale,
@@ -33,20 +33,34 @@ ChartJS.register(
   TimeScale
 );
 
-const MAX_HISTORY_POINTS = 50;
+const MAX_HISTORY_POINTS_CLIENT = 50; // Max history points to keep on client if receiving rapidly before initial load
+type TimeRangeOption = 'all' | '5m' | '15m';
 
 interface MqttStatus {
   connected: boolean;
   message: string;
 }
 
+interface HistoryPoint {
+  value: number;
+  timestamp: string; // ISO string
+}
+
+interface SensorDataEventPayload {
+  value: number;
+  unit?: string;
+  timestamp: string; // ISO string
+}
+
 interface SensorDataEvent {
   topic: string;
-  payload: {
-    value: number;
-    unit?: string;
-    timestamp: string; // ISO string
-  };
+  payload: SensorDataEventPayload;
+}
+
+interface InitialSensorHistoryEvent {
+  topic: string;
+  history: HistoryPoint[];
+  unit?: string;
 }
 
 interface SensorErrorData {
@@ -55,27 +69,21 @@ interface SensorErrorData {
   error: string;
 }
 
-interface HistoryPoint {
-  value: number;
-  timestamp: string; // ISO string
-}
-
 interface SensorDisplayData {
   latestValue: number | null;
   unit: string;
   history: HistoryPoint[];
-  topic: string; 
+  topic: string;
   displayName: string;
   lastUpdateTimestamp: string | null; // Store raw ISO string
 }
 
 interface SensorsState {
-  [topic: string]: SensorDisplayData; 
+  [topic: string]: SensorDisplayData;
 }
 
 function formatTopicName(topic: string): string {
   const parts = topic.split('/');
-  // Use the last non-empty part or "Sensor" if all parts are empty or topic is simple
   const significantPart = parts.filter(p => p.length > 0).pop() || "Sensor";
   return significantPart.charAt(0).toUpperCase() + significantPart.slice(1).replace(/([A-Z])/g, ' $1').trim();
 }
@@ -88,6 +96,7 @@ export default function DashboardPage() {
   const [socket, setSocket] = useState<ClientSocket | null>(null);
   const [lastSensorError, setLastSensorError] = useState<SensorErrorData | null>(null);
   const [isSocketConnecting, setIsSocketConnecting] = useState<boolean>(true);
+  const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeOption>('all');
 
   useEffect(() => {
     async function fetchBackendStatus() {
@@ -116,7 +125,7 @@ export default function DashboardPage() {
     const newSocket: ClientSocket = io({
       path: '/api/socketio',
       addTrailingSlash: false,
-      transports: ['websocket'], 
+      transports: ['websocket'],
     });
     setSocket(newSocket);
 
@@ -130,7 +139,7 @@ export default function DashboardPage() {
       setIsSocketConnecting(false);
       setMqttStatus({ connected: false, message: `Socket disconnected (${reason}). MQTT status unknown.` });
     });
-    
+
     newSocket.on('connect_error', (err) => {
       console.error('[DashboardPage] Socket.IO connection error:', err.message, err);
       setIsSocketConnecting(false);
@@ -141,18 +150,36 @@ export default function DashboardPage() {
     newSocket.on('mqtt_status', (status: MqttStatus) => {
       console.log('[DashboardPage] MQTT Status Update:', status);
       setMqttStatus(status);
-      if (status.connected) setIsSocketConnecting(false); // Also set connecting to false if MQTT connects
+      if (status.connected) setIsSocketConnecting(false);
     });
 
+    newSocket.on('initial_sensor_history', (data: InitialSensorHistoryEvent) => {
+      console.log(`[DashboardPage] Received initial_sensor_history for ${data.topic}`, data);
+      setSensors(prevSensors => {
+        const latestPoint = data.history.length > 0 ? data.history[data.history.length - 1] : null;
+        return {
+          ...prevSensors,
+          [data.topic]: {
+            latestValue: latestPoint ? latestPoint.value : null,
+            unit: data.unit || prevSensors[data.topic]?.unit || 'N/A',
+            history: data.history,
+            topic: data.topic,
+            displayName: formatTopicName(data.topic),
+            lastUpdateTimestamp: latestPoint ? latestPoint.timestamp : null,
+          },
+        };
+      });
+    });
+    
     newSocket.on('sensor_data', (data: SensorDataEvent) => {
       console.log('[DashboardPage] Sensor Data Received:', data);
-      setLastSensorError(null); 
+      setLastSensorError(null);
 
       setSensors(prevSensors => {
         const existingSensor = prevSensors[data.topic];
         
-        let unit = data.payload.unit || 'N/A'; 
-        if (unit === 'N/A') { // Infer if not provided and default
+        let unit = data.payload.unit || existingSensor?.unit || 'N/A';
+        if (unit === 'N/A') {
             if (data.topic.toLowerCase().includes('temperature')) unit = '°C';
             else if (data.topic.toLowerCase().includes('humidity')) unit = '%';
             else if (data.topic.toLowerCase().includes('pressure')) unit = 'hPa';
@@ -164,7 +191,7 @@ export default function DashboardPage() {
           ? [...existingSensor.history, newHistoryEntry]
           : [newHistoryEntry];
         
-        const trimmedHistory = updatedHistory.slice(-MAX_HISTORY_POINTS);
+        const trimmedHistory = updatedHistory.slice(-MAX_HISTORY_POINTS_CLIENT);
 
         return {
           ...prevSensors,
@@ -173,13 +200,13 @@ export default function DashboardPage() {
             unit: unit,
             history: trimmedHistory,
             topic: data.topic,
-            displayName: formatTopicName(data.topic),
-            lastUpdateTimestamp: data.payload.timestamp, // Store the raw ISO string
+            displayName: existingSensor?.displayName || formatTopicName(data.topic),
+            lastUpdateTimestamp: data.payload.timestamp,
           },
         };
       });
     });
-    
+
     newSocket.on('sensor_data_error', (data: SensorErrorData) => {
       console.error('[DashboardPage] Error processing sensor data:', data);
       setLastSensorError(data);
@@ -191,7 +218,7 @@ export default function DashboardPage() {
       setSocket(null);
       setIsSocketConnecting(true);
     };
-  }, []); 
+  }, []);
 
   const getMqttStatusDisplay = () => {
     if (isSocketConnecting && !socket?.connected) {
@@ -212,7 +239,7 @@ export default function DashboardPage() {
       className: !isError && !mqttStatus.connected ? "animate-spin" : ""
     };
   };
-  
+
   const mqttDisplay = getMqttStatusDisplay();
 
   const chartOptions = {
@@ -220,12 +247,12 @@ export default function DashboardPage() {
     maintainAspectRatio: false,
     scales: {
       x: {
-        type: 'time' as const, 
+        type: 'time' as const,
         time: {
           unit: 'second' as const,
-          tooltipFormat: 'PPpp' as const, 
+          tooltipFormat: 'PPpp' as const,
           displayFormats: {
-            second: 'HH:mm:ss' as const, 
+            second: 'HH:mm:ss' as const,
           },
         },
         ticks: {
@@ -234,24 +261,16 @@ export default function DashboardPage() {
           maxTicksLimit: 10,
           color: 'hsl(var(--muted-foreground))',
         },
-        grid: {
-          display: false,
-        }
+        grid: { display: false }
       },
       y: {
         beginAtZero: false,
-        grid: {
-          color: 'hsl(var(--border))', 
-        },
-        ticks: {
-          color: 'hsl(var(--muted-foreground))',
-        }
+        grid: { color: 'hsl(var(--border))' },
+        ticks: { color: 'hsl(var(--muted-foreground))' }
       },
     },
     plugins: {
-      legend: {
-        display: false, 
-      },
+      legend: { display: false },
       tooltip: {
         mode: 'index' as const,
         intersect: false,
@@ -264,20 +283,20 @@ export default function DashboardPage() {
     },
     elements: {
       line: {
-        tension: 0.2, 
+        tension: 0.2,
         borderColor: 'hsl(var(--primary))',
         borderWidth: 2,
         fill: true,
         backgroundColor: 'hsla(var(--primary), 0.1)',
       },
       point: {
-        radius: 0, 
+        radius: 0,
         hoverRadius: 5,
         backgroundColor: 'hsl(var(--primary))',
       },
     },
   };
-  
+
   const formatDisplayTimestamp = (isoTimestamp: string | null): string => {
     if (!isoTimestamp) return 'N/A';
     try {
@@ -288,12 +307,30 @@ export default function DashboardPage() {
     }
   };
 
-  return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        {/* Title is now in global Header, ConnectionStatusIndicator also in Header */}
-      </div>
+  const getFilteredHistory = (history: HistoryPoint[], range: TimeRangeOption): HistoryPoint[] => {
+    if (range === 'all' || history.length === 0) return history;
 
+    const now = parseISO(history[history.length - 1].timestamp); // Use latest point as 'now'
+    let startTime: Date;
+
+    if (range === '5m') {
+      startTime = subMinutes(now, 5);
+    } else if (range === '15m') {
+      startTime = subMinutes(now, 15);
+    } else {
+      return history; // Should not happen if range is 'all'
+    }
+    return history.filter(point => isAfter(parseISO(point.timestamp), startTime));
+  };
+  
+  const timeRangeOptions: { label: string; value: TimeRangeOption }[] = [
+    { label: 'All History', value: 'all' },
+    { label: 'Last 5 Minutes', value: '5m' },
+    { label: 'Last 15 Minutes', value: '15m' },
+  ];
+
+  return (
+    <div className="space-y-8 p-2 md:p-6">
       <Card className="border border-border shadow-md">
         <CardHeader>
           <CardTitle className="font-headline flex items-center text-xl">
@@ -324,6 +361,27 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      <Card className="border border-border shadow-md">
+        <CardHeader>
+          <CardTitle className="font-headline flex items-center text-lg">
+            <Clock className="mr-2 h-5 w-5 text-primary" />
+            Graph Time Range
+          </CardTitle>
+          <CardDescription>Select the historical data range to display on the charts.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {timeRangeOptions.map(opt => (
+            <Button
+              key={opt.value}
+              variant={selectedTimeRange === opt.value ? 'default' : 'outline'}
+              onClick={() => setSelectedTimeRange(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
         {Object.keys(sensors).length === 0 && !isSocketConnecting && mqttStatus.connected && (
           <Card className="md:col-span-1 lg:col-span-2 xl:col-span-3 shadow-md">
@@ -331,22 +389,23 @@ export default function DashboardPage() {
               <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5 text-primary"/>Waiting for Sensor Data</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-muted-foreground">No sensor data has been received yet. Ensure your sensors are publishing to the configured MQTT topics (e.g., {process.env.NEXT_PUBLIC_MQTT_BASE_TOPIC || "sensorflow/demo/"}&lt;sensor_name&gt;).</p>
+              <p className="text-muted-foreground">No sensor data has been received yet. Ensure your sensors are publishing to the configured MQTT topics (e.g., sensorflow/demo/&lt;sensor_name&gt;).</p>
             </CardContent>
           </Card>
         )}
 
         {Object.values(sensors).map((sensor) => {
+          const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
           const chartData = {
-            labels: sensor.history.map(p => parseISO(p.timestamp)), 
+            labels: displayHistory.map(p => parseISO(p.timestamp)),
             datasets: [
               {
                 label: sensor.displayName,
-                data: sensor.history.map(p => p.value),
+                data: displayHistory.map(p => p.value),
               },
             ],
           };
-          let IconComponent = LineChartIcon; 
+          let IconComponent = LineChartIcon;
           if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
           if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
 
@@ -368,12 +427,12 @@ export default function DashboardPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-60 w-full"> 
-                  {sensor.history.length > 1 ? (
+                <div className="h-60 w-full">
+                  {displayHistory.length > 1 ? (
                     <Line options={chartOptions as any} data={chartData} />
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
-                      <p>{sensor.history.length === 0 ? "No data yet." : "Need more data to plot graph."}</p>
+                      <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <=1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
                     </div>
                   )}
                 </div>
@@ -382,14 +441,14 @@ export default function DashboardPage() {
           );
         })}
       </div>
-      
+
       {Object.keys(sensors).length > 0 && (
         <Card className="shadow-md mt-8 border border-border">
           <CardHeader>
             <CardTitle className="font-headline text-xl">Sensor Summary</CardTitle>
             <CardDescription>Latest readings from all active sensors.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -402,10 +461,10 @@ export default function DashboardPage() {
               <TableBody>
                 {Object.values(sensors).sort((a,b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
                   <TableRow key={sensor.topic}>
-                    <TableCell className="font-medium">{sensor.displayName}</TableCell>
+                    <TableCell className="font-medium whitespace-nowrap">{sensor.displayName}</TableCell>
                     <TableCell className="text-right">{sensor.latestValue !== null ? sensor.latestValue.toFixed(1) : '--'}</TableCell>
                     <TableCell>{sensor.unit}</TableCell>
-                    <TableCell>{formatDisplayTimestamp(sensor.lastUpdateTimestamp)}</TableCell>
+                    <TableCell className="whitespace-nowrap">{formatDisplayTimestamp(sensor.lastUpdateTimestamp)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -416,3 +475,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
