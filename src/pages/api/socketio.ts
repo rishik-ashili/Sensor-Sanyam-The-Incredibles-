@@ -17,9 +17,12 @@ interface NextApiResponseWithSocket extends NextApiResponse {
   socket: SocketWithIO;
 }
 
+// Use environment variables with defaults
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com';
-// Using a wildcard to capture various sensor types under the demo prefix
-const MQTT_TOPICS_SUBSCRIBE = ['sensorflow/demo/#']; 
+const MQTT_BASE_TOPIC = process.env.MQTT_BASE_TOPIC || 'sensorflow/demo/#';
+// Maintain a list for potential multiple base topics or specific subscriptions
+const MQTT_TOPICS_SUBSCRIBE = [MQTT_BASE_TOPIC]; 
+
 let mqttClient: mqtt.MqttClient | null = null;
 
 export const config = {
@@ -44,6 +47,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
 
     if (!res.socket.server.io) {
       console.log('[SocketIO API] Initializing Socket.IO server and MQTT client...');
+      console.log(`[SocketIO API] Attempting to connect to MQTT broker at: ${MQTT_BROKER_URL}`);
       const httpServer: HTTPServer = res.socket.server;
       const io = new IOServer(httpServer, {
         path: '/api/socketio', 
@@ -60,8 +64,8 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
         mqttClient = mqtt.connect(MQTT_BROKER_URL);
 
         mqttClient.on('connect', () => {
-          console.log('[SocketIO API] MQTT connected to broker:', MQTT_BROKER_URL);
-          io.emit('mqtt_status', { connected: true, message: 'Connected to MQTT broker' });
+          console.log(`[SocketIO API] MQTT connected to broker: ${MQTT_BROKER_URL}`);
+          io.emit('mqtt_status', { connected: true, message: `Connected to MQTT broker (${MQTT_BROKER_URL})` });
           MQTT_TOPICS_SUBSCRIBE.forEach(topicPattern => {
             mqttClient?.subscribe(topicPattern, (err) => {
               if (err) {
@@ -74,7 +78,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
         });
 
         mqttClient.on('error', (err) => {
-          console.error('[SocketIO API] MQTT connection error:', err);
+          console.error('[SocketIO API] MQTT connection error:', err.message, err);
           io.emit('mqtt_status', { connected: false, message: `MQTT Error: ${err.message}` });
         });
 
@@ -97,26 +101,31 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
           console.log(`[SocketIO API] Received MQTT message on ${topic}: ${message.toString()}`);
           try {
             const parsedPayload = JSON.parse(message.toString());
-            // Ensure payload is an object and add timestamp if not present
-            let finalPayload = {};
+            let finalPayload: Record<string, any> = {};
             if (typeof parsedPayload === 'object' && parsedPayload !== null) {
               finalPayload = { ...parsedPayload };
-            } else { // If message is just a value, e.g. "23.5"
+            } else { 
               finalPayload = { value: parseFloat(parsedPayload) }; 
             }
             
-            if (isNaN(Number((finalPayload as any).value))) {
-                 console.warn(`[SocketIO API] Parsed value is NaN for topic ${topic}. Raw message: ${message.toString()}`);
-                 // Potentially emit an error or skip if value is critical and invalid
+            if (typeof finalPayload.value === 'undefined' || finalPayload.value === null || isNaN(Number(finalPayload.value))) {
+                 console.warn(`[SocketIO API] Parsed value is invalid or missing for topic ${topic}. Raw message: ${message.toString()}. Using raw message as value attempt.`);
+                 finalPayload.value = parseFloat(message.toString()); // Attempt to parse raw message as float
+                 if(isNaN(finalPayload.value)) {
+                    console.error(`[SocketIO API] Critical: Could not determine a valid numeric value for ${topic}. Skipping message.`);
+                    io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid value (not parseable to number).` });
+                    return;
+                 }
             }
-
-            (finalPayload as any).timestamp = (finalPayload as any).timestamp || new Date().toISOString();
+            // Ensure timestamp is always present, prefer original if available
+            finalPayload.timestamp = finalPayload.timestamp || new Date().toISOString();
+            // Ensure unit is present, prefer original, default to 'N/A'
+            finalPayload.unit = finalPayload.unit || 'N/A';
             
             io.emit('sensor_data', { topic, payload: finalPayload });
           } catch (e) {
             const parseError = e instanceof Error ? e.message : String(e);
-            console.error(`[SocketIO API] Failed to parse MQTT message payload from topic ${topic}: ${parseError}. Raw: "${message.toString()}"`);
-            // Try to parse as a raw number if JSON parsing failed
+            console.warn(`[SocketIO API] Failed to parse MQTT message as JSON from topic ${topic}: ${parseError}. Raw: "${message.toString()}". Attempting to treat as raw value.`);
             const numericValue = parseFloat(message.toString());
             if (!isNaN(numericValue)) {
                 console.log(`[SocketIO API] Emitting raw numeric value for topic ${topic} after JSON parse fail.`);
@@ -124,10 +133,12 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
                     topic,
                     payload: {
                         value: numericValue,
+                        unit: 'N/A', // default unit for raw values
                         timestamp: new Date().toISOString()
                     }
                 });
             } else {
+                console.error(`[SocketIO API] Message on topic ${topic} is not valid JSON and not a parseable number: "${message.toString()}"`);
                 io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid format (not JSON or number): ${parseError}` });
             }
           }
@@ -141,7 +152,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
         console.log('[SocketIO API] Socket.IO client connected:', socket.id);
         if (mqttClient) {
           const statusMessage = mqttClient.connected 
-            ? 'Connected to MQTT broker' 
+            ? `Connected to MQTT broker (${MQTT_BROKER_URL})`
             : (mqttClient.reconnecting ? 'MQTT reconnecting...' : 'MQTT not connected');
           socket.emit('mqtt_status', {
             connected: mqttClient.connected,
