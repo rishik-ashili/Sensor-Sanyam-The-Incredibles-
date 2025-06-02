@@ -114,7 +114,7 @@ export default function DashboardPage() {
     const newSocket: ClientSocket = io({
       path: '/api/socketio',
       addTrailingSlash: false,
-      transports: ['websocket'],
+      transports: ['websocket'], // Explicitly use WebSocket transport
     });
     setSocket(newSocket);
 
@@ -370,3 +370,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
