@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { io, type Socket as ClientSocket } from 'socket.io-client'; // Renamed to ClientSocket to avoid conflict
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ConnectionStatusIndicator from "@/components/dashboard/ConnectionStatusIndicator"; // For general backend status
-import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle } from 'lucide-react';
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2 } from 'lucide-react';
 
 // Define types for sensor data and MQTT status
 interface SensorData {
@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const [humidity, setHumidity] = useState<number | null>(null);
   const [socket, setSocket] = useState<ClientSocket | null>(null);
   const [lastSensorError, setLastSensorError] = useState<SensorErrorData | null>(null);
+  const [isSocketConnecting, setIsSocketConnecting] = useState<boolean>(true);
 
   // Effect for fetching initial backend API status (standard API call)
   useEffect(() => {
@@ -47,7 +48,8 @@ export default function DashboardPage() {
           setBackendApiStatusMessage(`Backend API error: ${response.statusText} (Status: ${response.status})`);
         }
       } catch (error) {
-        setBackendApiStatusMessage('Failed to connect to backend API.');
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setBackendApiStatusMessage(`Failed to connect to backend API: ${errorMessage}`);
       }
     }
     fetchBackendStatus();
@@ -58,36 +60,47 @@ export default function DashboardPage() {
     // Ensure this runs only on the client
     if (typeof window === "undefined") return;
 
-    // Connect to the Socket.IO server using the path defined in the API route
+    console.log('[DashboardPage] Attempting to connect Socket.IO client...');
+    setIsSocketConnecting(true);
+
     const newSocket: ClientSocket = io({
       path: '/api/socketio',
       addTrailingSlash: false,
-      transports: ['websocket'], // Prefer WebSocket
+      transports: ['websocket'], 
     });
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
-      console.log('Socket.IO connected to server:', newSocket.id);
-      // Initial MQTT status might be emitted by server upon connection
+      console.log('[DashboardPage] Socket.IO connected to server:', newSocket.id);
+      setIsSocketConnecting(false);
+      // Initial MQTT status will be emitted by server upon connection or received via 'mqtt_status'
     });
 
     newSocket.on('disconnect', (reason) => {
-      console.log('Socket.IO disconnected from server:', reason);
-      setMqttStatus({ connected: false, message: 'Socket disconnected. MQTT status unknown.' });
+      console.log('[DashboardPage] Socket.IO disconnected from server. Reason:', reason);
+      setIsSocketConnecting(false); // Or true if it will attempt to reconnect
+      setMqttStatus({ connected: false, message: `Socket disconnected (${reason}). MQTT status unknown.` });
     });
     
-    newSocket.on('connect_error', (error) => {
-      console.error('Socket.IO connection error:', error);
-      setMqttStatus({ connected: false, message: `Socket connection error: ${error.message}. Ensure server is running.` });
+    newSocket.on('connect_error', (err) => {
+      // err is an Error object
+      console.error('[DashboardPage] Socket.IO connection error:', err.message, err);
+      setIsSocketConnecting(false);
+      const errorMessage = err.message || 'Unknown socket connection error';
+      setMqttStatus({ connected: false, message: `Socket connection error: ${errorMessage}. Ensure server is running and reachable.` });
     });
 
     newSocket.on('mqtt_status', (status: MqttStatus) => {
-      console.log('MQTT Status Update:', status);
+      console.log('[DashboardPage] MQTT Status Update:', status);
       setMqttStatus(status);
+      // If MQTT is connected, ensure socket connecting indicator is false
+      if (status.connected) {
+        setIsSocketConnecting(false);
+      }
     });
 
     newSocket.on('sensor_data', (data: SensorData) => {
-      console.log('Sensor Data Received:', data);
+      console.log('[DashboardPage] Sensor Data Received:', data);
       setLastSensorError(null); // Clear previous error on new data
       if (data.topic.includes('temperature')) {
         setTemperature(data.payload.value);
@@ -97,45 +110,76 @@ export default function DashboardPage() {
     });
     
     newSocket.on('sensor_data_error', (data: SensorErrorData) => {
-      console.error('Error processing sensor data:', data);
+      console.error('[DashboardPage] Error processing sensor data:', data);
       setLastSensorError(data);
     });
 
     return () => {
-      console.log('Cleaning up socket connection...');
+      console.log('[DashboardPage] Cleaning up socket connection...');
       if (newSocket.connected) {
         newSocket.disconnect();
       }
       setSocket(null);
+      setIsSocketConnecting(true); // Reset for potential remount
     };
-  }, []); // Empty dependency array ensures this runs once on mount and cleans up on unmount
+  }, []); 
 
-  const getMqttStatusColor = () => {
-    if (!socket?.connected) return 'text-yellow-500'; // Socket not connected, MQTT status uncertain
-    if (mqttStatus.message.toLowerCase().includes('error') || mqttStatus.message.toLowerCase().includes('offline') || mqttStatus.message.toLowerCase().includes('closed')) return 'text-red-500';
-    if (mqttStatus.connected) return 'text-green-500';
-    return 'text-yellow-500'; // Connecting, reconnecting, or other intermediate states
+  const getMqttStatusDisplay = () => {
+    if (isSocketConnecting && !socket?.connected) {
+      return { 
+        text: "Connecting to real-time service...", 
+        Icon: Loader2, 
+        color: "text-yellow-500 animate-spin",
+        iconColor: "text-yellow-500" 
+      };
+    }
+    if (!socket?.connected && !isSocketConnecting) { // Socket explicitly disconnected or failed
+         return { 
+           text: mqttStatus.message || "Socket.IO not connected to server.", 
+           Icon: WifiOff, 
+           color: "text-red-500",
+           iconColor: "text-red-500"
+        };
+    }
+    // Socket is connected, now check MQTT status
+    if (mqttStatus.connected) {
+      return { 
+        text: mqttStatus.message, 
+        Icon: Wifi, 
+        color: "text-green-500",
+        iconColor: "text-green-500"
+      };
+    }
+    // Socket connected, but MQTT has an issue or is (re)connecting
+    const isError = mqttStatus.message.toLowerCase().includes('error') || mqttStatus.message.toLowerCase().includes('offline') || mqttStatus.message.toLowerCase().includes('closed');
+    return {
+      text: mqttStatus.message,
+      Icon: isError ? WifiOff : Loader2, // Loader if (re)connecting, WifiOff if error/closed
+      color: isError ? "text-red-500" : "text-yellow-500",
+      iconColor: isError ? "text-red-500" : "text-yellow-500",
+      className: !isError ? "animate-spin" : ""
+    };
   };
-
+  
+  const mqttDisplay = getMqttStatusDisplay();
 
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-headline font-semibold">Dashboard</h1>
-        <ConnectionStatusIndicator /> {/* General backend API health from its own fetch */}
+        <ConnectionStatusIndicator /> 
       </div>
 
-      {/* MQTT Broker Status Card */}
       <Card>
         <CardHeader>
           <CardTitle className="font-headline flex items-center">
-            {mqttStatus.connected && socket?.connected ? <Wifi className="mr-2 h-5 w-5 text-green-500" /> : <WifiOff className="mr-2 h-5 w-5 text-red-500" />}
+            <mqttDisplay.Icon className={`mr-2 h-5 w-5 ${mqttDisplay.iconColor} ${mqttDisplay.className || ''}`} />
             MQTT Broker Status
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className={`text-sm font-medium ${getMqttStatusColor()}`}>
-            {socket?.connected ? mqttStatus.message : "Socket.IO not connected to server."}
+          <p className={`text-sm font-medium ${mqttDisplay.color}`}>
+            {mqttDisplay.text}
           </p>
            <p className="text-xs text-muted-foreground mt-1">API Service Status: {backendApiStatusMessage}</p>
         </CardContent>
