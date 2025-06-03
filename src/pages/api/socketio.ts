@@ -1,4 +1,3 @@
-
 import type { Server as HTTPServer } from 'http';
 import type { Socket as NetSocket } from 'net';
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -66,8 +65,18 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
         addTrailingSlash: false,
         cors: {
           origin: "*",
-          methods: ["GET", "POST"]
-        }
+          methods: ["GET", "POST"],
+          credentials: false,
+          allowedHeaders: ["Access-Control-Allow-Origin"]
+        },
+        transports: ['polling', 'websocket'],
+        pingTimeout: 60000,
+        pingInterval: 25000,
+        connectTimeout: 20000,
+        allowEIO3: true,
+        allowUpgrades: true,
+        cookie: false,
+        serveClient: false
       });
       res.socket.server.io = io;
 
@@ -123,7 +132,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             if (typeof finalPayload.value === 'undefined' || finalPayload.value === null || isNaN(Number(finalPayload.value))) {
               console.warn(`[SocketIO API] Parsed value is invalid or missing for topic ${topic}. Raw message: ${message.toString()}. Attempting to use raw message.`);
               finalPayload.value = parseFloat(message.toString());
-              if(isNaN(finalPayload.value)) {
+              if (isNaN(finalPayload.value)) {
                 console.error(`[SocketIO API] Critical: Could not determine a valid numeric value for ${topic}. Skipping message.`);
                 io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid value (not parseable to number).` });
                 return;
@@ -131,7 +140,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             }
             finalPayload.timestamp = finalPayload.timestamp || new Date().toISOString();
             finalPayload.unit = finalPayload.unit || 'N/A';
-            
+
             // Update history buffer
             if (!sensorDataStore.has(topic)) {
               sensorDataStore.set(topic, { history: [], currentUnit: finalPayload.unit });
@@ -142,7 +151,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             if (sensorEntry.history.length > MAX_HISTORY_POINTS_PER_SENSOR) {
               sensorEntry.history.splice(0, sensorEntry.history.length - MAX_HISTORY_POINTS_PER_SENSOR);
             }
-            
+
             io.emit('sensor_data', { topic, payload: finalPayload });
           } catch (e) {
             const parseError = e instanceof Error ? e.message : String(e);
@@ -158,7 +167,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
               sensorEntry.currentUnit = unit;
               sensorEntry.history.push({ value: numericValue, timestamp });
               if (sensorEntry.history.length > MAX_HISTORY_POINTS_PER_SENSOR) {
-                 sensorEntry.history.splice(0, sensorEntry.history.length - MAX_HISTORY_POINTS_PER_SENSOR);
+                sensorEntry.history.splice(0, sensorEntry.history.length - MAX_HISTORY_POINTS_PER_SENSOR);
               }
               io.emit('sensor_data', {
                 topic,

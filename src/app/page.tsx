@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from 'react';
@@ -125,7 +124,16 @@ export default function DashboardPage() {
     const newSocket: ClientSocket = io({
       path: '/api/socketio',
       addTrailingSlash: false,
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'],
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+      forceNew: true,
+      autoConnect: true,
+      withCredentials: false,
+      extraHeaders: {
+        "Access-Control-Allow-Origin": "*"
+      }
     });
     setSocket(newSocket);
 
@@ -170,27 +178,27 @@ export default function DashboardPage() {
         };
       });
     });
-    
+
     newSocket.on('sensor_data', (data: SensorDataEvent) => {
       console.log('[DashboardPage] Sensor Data Received:', data);
       setLastSensorError(null);
 
       setSensors(prevSensors => {
         const existingSensor = prevSensors[data.topic];
-        
+
         let unit = data.payload.unit || existingSensor?.unit || 'N/A';
         if (unit === 'N/A') {
-            if (data.topic.toLowerCase().includes('temperature')) unit = '°C';
-            else if (data.topic.toLowerCase().includes('humidity')) unit = '%';
-            else if (data.topic.toLowerCase().includes('pressure')) unit = 'hPa';
+          if (data.topic.toLowerCase().includes('temperature')) unit = '°C';
+          else if (data.topic.toLowerCase().includes('humidity')) unit = '%';
+          else if (data.topic.toLowerCase().includes('pressure')) unit = 'hPa';
         }
 
         const newHistoryEntry: HistoryPoint = { value: data.payload.value, timestamp: data.payload.timestamp };
-        
+
         const updatedHistory = existingSensor
           ? [...existingSensor.history, newHistoryEntry]
           : [newHistoryEntry];
-        
+
         const trimmedHistory = updatedHistory.slice(-MAX_HISTORY_POINTS_CLIENT);
 
         return {
@@ -225,7 +233,7 @@ export default function DashboardPage() {
       return { text: "Connecting to real-time service...", Icon: Loader2, color: "text-yellow-500", iconColor: "text-yellow-500", className: "animate-spin" };
     }
     if (!socket?.connected && !isSocketConnecting) {
-         return { text: mqttStatus.message || "Socket.IO not connected to server.", Icon: WifiOff, color: "text-red-500", iconColor: "text-red-500"};
+      return { text: mqttStatus.message || "Socket.IO not connected to server.", Icon: WifiOff, color: "text-red-500", iconColor: "text-red-500" };
     }
     if (mqttStatus.connected) {
       return { text: mqttStatus.message, Icon: Wifi, color: "text-green-500", iconColor: "text-green-500" };
@@ -322,7 +330,7 @@ export default function DashboardPage() {
     }
     return history.filter(point => isAfter(parseISO(point.timestamp), startTime));
   };
-  
+
   const timeRangeOptions: { label: string; value: TimeRangeOption }[] = [
     { label: 'All History', value: 'all' },
     { label: 'Last 5 Minutes', value: '5m' },
@@ -342,7 +350,7 @@ export default function DashboardPage() {
           <p className={`text-base font-medium ${mqttDisplay.color}`}>
             {mqttDisplay.text}
           </p>
-           <p className="text-xs text-muted-foreground mt-2">API Service Status: {backendApiStatusMessage}</p>
+          <p className="text-xs text-muted-foreground mt-2">API Service Status: {backendApiStatusMessage}</p>
         </CardContent>
       </Card>
 
@@ -356,7 +364,7 @@ export default function DashboardPage() {
           <CardContent className="text-destructive text-sm space-y-1">
             <p><strong>Topic:</strong> {lastSensorError.topic}</p>
             <p><strong>Details:</strong> {lastSensorError.error}.</p>
-            <p><strong>Received:</strong> "{lastSensorError.rawMessage.substring(0,100)}{lastSensorError.rawMessage.length > 100 ? '...' : '' }"</p>
+            <p><strong>Received:</strong> "{lastSensorError.rawMessage.substring(0, 100)}{lastSensorError.rawMessage.length > 100 ? '...' : ''}"</p>
           </CardContent>
         </Card>
       )}
@@ -386,7 +394,7 @@ export default function DashboardPage() {
         {Object.keys(sensors).length === 0 && !isSocketConnecting && mqttStatus.connected && (
           <Card className="md:col-span-1 lg:col-span-2 xl:col-span-3 shadow-md">
             <CardHeader>
-              <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5 text-primary"/>Waiting for Sensor Data</CardTitle>
+              <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5 text-primary" />Waiting for Sensor Data</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-muted-foreground">No sensor data has been received yet. Ensure your sensors are publishing to the configured MQTT topics (e.g., sensorflow/demo/&lt;sensor_name&gt;).</p>
@@ -422,7 +430,7 @@ export default function DashboardPage() {
                   </span>
                 </CardTitle>
                 <CardDescription className="text-xs">
-                  Topic: {sensor.topic} <br/>
+                  Topic: {sensor.topic} <br />
                   Last update: {formatDisplayTimestamp(sensor.lastUpdateTimestamp)}
                 </CardDescription>
               </CardHeader>
@@ -432,7 +440,7 @@ export default function DashboardPage() {
                     <Line options={chartOptions as any} data={chartData} />
                   ) : (
                     <div className="flex items-center justify-center h-full text-muted-foreground">
-                      <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <=1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
+                      <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <= 1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
                     </div>
                   )}
                 </div>
@@ -459,7 +467,7 @@ export default function DashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {Object.values(sensors).sort((a,b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
+                {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
                   <TableRow key={sensor.topic}>
                     <TableCell className="font-medium whitespace-nowrap">{sensor.displayName}</TableCell>
                     <TableCell className="text-right">{sensor.latestValue !== null ? sensor.latestValue.toFixed(1) : '--'}</TableCell>
