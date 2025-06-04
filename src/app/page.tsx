@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,15 @@ function formatTopicName(topic: string): string {
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
+// Debounce helper
+function debounce(fn: (...args: any[]) => void, delay: number) {
+  let timer: NodeJS.Timeout;
+  return (...args: any[]) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
+
 export default function DashboardPage() {
   const [backendApiStatusMessage, setBackendApiStatusMessage] = useState<string>('Checking API status...');
   const [mqttStatus, setMqttStatus] = useState<MqttStatus>({ connected: false, message: 'Initializing MQTT connection...' });
@@ -112,6 +121,8 @@ export default function DashboardPage() {
     }
     return {};
   });
+  const socketRef = useRef<ClientSocket | null>(null);
+  const debouncedSetSensors = useRef(debounce((updater) => setSensors(updater), 100)).current;
 
   useEffect(() => {
     async function fetchBackendStatus() {
@@ -133,6 +144,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (socketRef.current) return; // Only one socket connection
 
     console.log('[DashboardPage] Attempting to connect Socket.IO client...');
     setIsSocketConnecting(true);
@@ -151,6 +163,7 @@ export default function DashboardPage() {
         "Access-Control-Allow-Origin": "*"
       }
     });
+    socketRef.current = newSocket;
     setSocket(newSocket);
 
     newSocket.on('connect', () => {
@@ -183,9 +196,11 @@ export default function DashboardPage() {
         const latestPoint = data.history.length > 0 ? data.history[data.history.length - 1] : null;
         const device = data.history.length > 0 && (data.history[data.history.length - 1] as any).device;
         const coordinates = data.history.length > 0 && (data.history[data.history.length - 1] as any).coordinates;
+        // Merge, don't overwrite, and always create a tile for every topic
         return {
           ...prevSensors,
           [data.topic]: {
+            ...prevSensors[data.topic],
             latestValue: latestPoint ? latestPoint.value : null,
             unit: data.unit || prevSensors[data.topic]?.unit || 'N/A',
             history: data.history,
@@ -200,30 +215,25 @@ export default function DashboardPage() {
     });
 
     newSocket.on('sensor_data', (data: SensorDataEvent) => {
-      console.log('[DashboardPage] Sensor Data Received:', data);
+      // console.log('[DashboardPage] Sensor Data Received:', data);
       setLastSensorError(null);
-
-      setSensors(prevSensors => {
+      debouncedSetSensors((prevSensors: SensorsState) => {
         const existingSensor = prevSensors[data.topic];
-
         let unit = data.payload.unit || existingSensor?.unit || 'N/A';
         if (unit === 'N/A') {
           if (data.topic.toLowerCase().includes('temperature')) unit = '°C';
           else if (data.topic.toLowerCase().includes('humidity')) unit = '%';
           else if (data.topic.toLowerCase().includes('pressure')) unit = 'hPa';
         }
-
         const newHistoryEntry: HistoryPoint = { value: data.payload.value, timestamp: data.payload.timestamp };
-
         const updatedHistory = existingSensor
           ? [...existingSensor.history, newHistoryEntry]
           : [newHistoryEntry];
-
         const trimmedHistory = updatedHistory.slice(-MAX_HISTORY_POINTS_CLIENT);
-
         return {
           ...prevSensors,
           [data.topic]: {
+            ...existingSensor,
             latestValue: data.payload.value,
             unit: unit,
             history: trimmedHistory,
@@ -242,9 +252,13 @@ export default function DashboardPage() {
       setLastSensorError(data);
     });
 
+    // Clean up listeners and socket on unmount
     return () => {
-      console.log('[DashboardPage] Cleaning up socket connection...');
-      if (newSocket.connected) newSocket.disconnect();
+      if (socketRef.current) {
+        socketRef.current.removeAllListeners();
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
       setSocket(null);
       setIsSocketConnecting(true);
     };
