@@ -734,6 +734,88 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* --- Analytics & Insights Section --- */}
+        {Object.keys(sensors).length > 0 && (
+          <Card className="shadow-md mt-8 border border-border">
+            <CardHeader>
+              <CardTitle className="font-headline text-xl">Analytics & Insights</CardTitle>
+              <CardDescription>Statistical insights and advanced analytics for each sensor.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-8">
+              {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => {
+                // Sort history by timestamp
+                const sortedHistory = [...sensor.history].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                const values = sortedHistory.map(p => p.value);
+                const timestamps = sortedHistory.map(p => p.timestamp);
+                // Basic stats
+                const current = sensor.latestValue;
+                const lastUpdated = sensor.lastUpdateTimestamp;
+                const max = values.length ? Math.max(...values) : null;
+                const min = values.length ? Math.min(...values) : null;
+                const avg = values.length ? (values.reduce((a, b) => a + b, 0) / values.length) : null;
+                const median = values.length ? [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] : null;
+                const stddev = values.length ? Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length) : null;
+                // Rolling averages
+                function rollingAvg(arr, window) {
+                  if (arr.length < window) return [];
+                  return arr.map((_, i) => {
+                    if (i < window - 1) return null;
+                    const slice = arr.slice(i - window + 1, i + 1);
+                    return slice.reduce((a, b) => a + b, 0) / window;
+                  });
+                }
+                const rolling3 = rollingAvg(values, 3);
+                const rolling5 = rollingAvg(values, 5);
+                const rolling10 = rollingAvg(values, 10);
+                // Prepare rolling avg chart data
+                const rollingChartData = {
+                  labels: timestamps,
+                  datasets: [
+                    { label: 'Raw', data: values, borderColor: 'hsl(var(--primary))', backgroundColor: 'hsla(var(--primary),0.1)', borderWidth: 1, pointRadius: 0 },
+                    { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
+                    { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
+                    { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
+                  ],
+                };
+                return (
+                  <Card key={sensor.topic} className="border border-border">
+                    <CardHeader>
+                      <CardTitle className="font-headline text-lg flex items-center gap-2">{sensor.displayName} <span className="text-xs text-muted-foreground">({sensor.unit})</span></CardTitle>
+                      <CardDescription>Analytics for topic: {sensor.topic}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                        <div><span className="font-semibold">Current:</span> {current !== null ? current.toFixed(2) : '--'}</div>
+                        <div><span className="font-semibold">Last Updated:</span> {formatDisplayTimestamp(lastUpdated)}</div>
+                        <div><span className="font-semibold">Peak:</span> {max !== null ? max.toFixed(2) : '--'}</div>
+                        <div><span className="font-semibold">Min:</span> {min !== null ? min.toFixed(2) : '--'}</div>
+                        <div><span className="font-semibold">Average:</span> {avg !== null ? avg.toFixed(2) : '--'}</div>
+                        <div><span className="font-semibold">Median:</span> {median !== null ? median.toFixed(2) : '--'}</div>
+                        <div><span className="font-semibold">Std Dev:</span> {stddev !== null ? stddev.toFixed(2) : '--'}</div>
+                      </div>
+                      <div className="mb-4">
+                        <span className="font-semibold">Rolling Averages (3s/5s/10s):</span>
+                        <div className="h-48 w-full">
+                          <Line options={{
+                            ...chartOptions,
+                            plugins: { ...chartOptions.plugins, legend: { display: true } },
+                            scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'time' } },
+                          }} data={rollingChartData} />
+                        </div>
+                      </div>
+                      {/* Placeholders for advanced analytics/graphs */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="p-4 bg-muted/30 rounded">[Peak/Trough Markers, Anomaly Indicators, Delta/Change Rate Graph, Uptime Graph]</div>
+                        <div className="p-4 bg-muted/30 rounded">[Bar Chart, Distribution Histogram, Heatmap, Time-based Metrics]</div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
