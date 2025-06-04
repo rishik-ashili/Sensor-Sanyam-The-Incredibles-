@@ -634,7 +634,10 @@ export default function DashboardPage() {
                       preventCollision={false}
                     >
                       {deviceSensors.filter(s => !deleted[s.topic]).map((sensor) => {
-                        const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
+                        const displayHistory = getFilteredHistory(
+                          [...sensor.history].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
+                          selectedTimeRange
+                        );
                         const chartData = {
                           labels: displayHistory.map(p => parseISO(p.timestamp)),
                           datasets: [
