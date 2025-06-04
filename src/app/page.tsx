@@ -159,12 +159,12 @@ function getAllSensorPeaks(sensors) {
   }).filter(v => v !== null);
 }
 
-// Helper for 5s peak per sensor (dynamic)
-function get5sPeak(sensors) {
+// Helper for 10s peak per sensor (dynamic, always returns a number)
+function get10sPeak(sensors) {
   const now = Date.now();
   return Object.values(sensors).map(sensor => {
-    const recent = sensor.history.filter(p => now - new Date(p.timestamp).getTime() <= 5000);
-    const peak = recent.length ? Math.max(...recent.map(p => p.value)) : null;
+    const recent = sensor.history.filter(p => now - new Date(p.timestamp).getTime() <= 10000);
+    const peak = recent.length ? Math.max(...recent.map(p => p.value)) : 0;
     return peak;
   });
 }
@@ -203,6 +203,7 @@ export default function DashboardPage() {
     return [];
   });
   const [minimizedAnalytics, setMinimizedAnalytics] = useState<{ [topic: string]: boolean }>({});
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   useEffect(() => {
     // Initial loading timer
@@ -546,6 +547,11 @@ export default function DashboardPage() {
   // Helper: get sensors for a device (empty array if offline)
   const getDeviceSensors = (device: string) => sensorsByDevice[device] || [];
 
+  useEffect(() => {
+    const interval = setInterval(() => setForceUpdate(f => f + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Loading Overlay */}
@@ -812,9 +818,9 @@ export default function DashboardPage() {
                     <CardDescription>Statistical insights and advanced analytics for each sensor.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-8">
-                    {/* Histogram for all sensor peaks (now a bar chart for 5s peak) */}
+                    {/* Bar Plot of 10s Peak Values (All Sensors) */}
                     <div className="mb-8">
-                      <span className="font-semibold">Bar Plot of 5s Peak Values (All Sensors):</span>
+                      <span className="font-semibold">Bar Plot of 10s Peak Values (All Sensors):</span>
                       <div className="h-40 w-full">
                         <Line
                           options={{
@@ -825,8 +831,8 @@ export default function DashboardPage() {
                           data={{
                             labels: Object.values(sensors).map(s => s.displayName),
                             datasets: [{
-                              label: '5s Peak Value',
-                              data: get5sPeak(sensors),
+                              label: '10s Peak Value',
+                              data: get10sPeak(sensors),
                               backgroundColor: 'rgba(59,130,246,0.7)',
                               borderColor: 'rgba(59,130,246,1)',
                               borderWidth: 2,
