@@ -44,6 +44,21 @@ sensors = [
     }
 ]
 
+# Burst publish on startup to quickly populate backend buffer
+for _ in range(5):
+    for sensor in sensors:
+        value = random.uniform(sensor["min"], sensor["max"])
+        payload = {
+            "value": round(value, 2),
+            "timestamp": datetime.utcnow().isoformat(),
+            "unit": sensor["unit"],
+            "device": "rpi1",
+            "coordinates": {"lat": 12.9716, "lon": 77.5946}
+        }
+        topic = f"{BASE_TOPIC}/{sensor['name']}"
+        client.publish(topic, json.dumps(payload))
+    time.sleep(0.2)  # 200ms between bursts
+
 try:
     while True:
         for sensor in sensors:
@@ -55,7 +70,8 @@ try:
                 "value": round(value, 2),
                 "timestamp": datetime.utcnow().isoformat(),
                 "unit": sensor["unit"],
-                "device": "rpi1"
+                "device": "rpi1",
+                "coordinates": {"lat": 12.9716, "lon": 77.5946}
             }
             
             # Publish to topic

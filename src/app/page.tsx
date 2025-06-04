@@ -80,6 +80,7 @@ interface SensorDisplayData {
   displayName: string;
   lastUpdateTimestamp: string | null; // Store raw ISO string
   device?: string;
+  coordinates?: { lat: number; lon: number };
 }
 
 interface SensorsState {
@@ -181,6 +182,7 @@ export default function DashboardPage() {
       setSensors(prevSensors => {
         const latestPoint = data.history.length > 0 ? data.history[data.history.length - 1] : null;
         const device = data.history.length > 0 && (data.history[data.history.length - 1] as any).device;
+        const coordinates = data.history.length > 0 && (data.history[data.history.length - 1] as any).coordinates;
         return {
           ...prevSensors,
           [data.topic]: {
@@ -191,6 +193,7 @@ export default function DashboardPage() {
             displayName: formatTopicName(data.topic),
             lastUpdateTimestamp: latestPoint ? latestPoint.timestamp : null,
             device: device || prevSensors[data.topic]?.device || 'Unknown',
+            coordinates: coordinates || prevSensors[data.topic]?.coordinates,
           },
         };
       });
@@ -228,6 +231,7 @@ export default function DashboardPage() {
             displayName: existingSensor?.displayName || formatTopicName(data.topic),
             lastUpdateTimestamp: data.payload.timestamp,
             device: (data.payload as any).device || existingSensor?.device || 'Unknown',
+            coordinates: (data.payload as any).coordinates || existingSensor?.coordinates,
           },
         };
       });
@@ -405,6 +409,12 @@ export default function DashboardPage() {
     }));
   }, [layoutByDevice, deleted, minimized]);
 
+  // Helper to get coordinates for a device group
+  const getDeviceCoordinates = (deviceSensors: SensorDisplayData[]) => {
+    const sensorWithCoords = deviceSensors.find(s => s.coordinates);
+    return sensorWithCoords?.coordinates;
+  };
+
   return (
     <div className="space-y-8 p-2 md:p-6">
       <Card className="border border-border shadow-md">
@@ -458,87 +468,110 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
+      <Button
+        className="mb-4 mt-4"
+        variant="secondary"
+        onClick={() => {
+          setDeleted({});
+          setMinimized({});
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('sensorDeleted');
+            localStorage.removeItem('sensorMinimized');
+          }
+        }}
+      >
+        Restore All Tiles
+      </Button>
+
       <Accordion type="multiple" collapsible="true" defaultValue={Object.keys(sensorsByDevice)}>
-        {Object.entries(sensorsByDevice).map(([device, deviceSensors]) => (
-          <AccordionItem value={device} key={device}>
-            <AccordionTrigger>{device}</AccordionTrigger>
-            <AccordionContent>
-              <ResponsiveGridLayout
-                className="layout"
-                layouts={{ lg: getGridLayout(device, deviceSensors) }}
-                breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                cols={{ lg: 6, md: 4, sm: 2, xs: 1, xxs: 1 }}
-                rowHeight={80}
-                isResizable
-                isDraggable
-                onLayoutChange={l => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
-                measureBeforeMount={false}
-                useCSSTransforms={true}
-                compactType="vertical"
-                preventCollision={false}
-              >
-                {deviceSensors.filter(s => !deleted[s.topic]).map((sensor) => {
-                  const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
-                  const chartData = {
-                    labels: displayHistory.map(p => parseISO(p.timestamp)),
-                    datasets: [
-                      {
-                        label: sensor.displayName,
-                        data: displayHistory.map(p => p.value),
-                      },
-                    ],
-                  };
-                  let IconComponent = LineChartIcon;
-                  if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
-                  if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
-                  const grid = (layoutByDevice[device] || []).find(l => l.i === sensor.topic) || { i: sensor.topic, x: 0, y: 0, w: 2, h: 4 };
-                  return (
-                    <div key={sensor.topic} data-grid={grid}>
-                      <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative">
-                        <div className="absolute top-2 right-2 flex gap-2 z-10">
-                          <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
-                            {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
-                          </Button>
-                          <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="font-headline flex items-center justify-between text-xl">
-                            <span className="flex items-center">
-                              <IconComponent className="mr-2 h-5 w-5 text-primary shrink-0" />
-                              {sensor.displayName}
-                            </span>
-                            <span className="text-2xl font-bold text-right text-primary">
-                              {sensor.latestValue !== null ? `${sensor.latestValue.toFixed(1)} ${sensor.unit}` : '--'}
-                            </span>
-                          </CardTitle>
-                          <CardDescription className="text-xs">
-                            Topic: {sensor.topic} <br />
-                            Last update: {formatDisplayTimestamp(sensor.lastUpdateTimestamp)}
-                          </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                          {!minimized[sensor.topic] && (
-                            <div className="h-60 w-full">
-                              {displayHistory.length > 1 ? (
-                                <Line options={chartOptions as any} data={chartData} />
-                              ) : (
-                                <div className="flex items-center justify-center h-full text-muted-foreground">
-                                  <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <= 1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </div>
-                  );
-                })}
-              </ResponsiveGridLayout>
-            </AccordionContent>
-          </AccordionItem>
-        ))}
+        {Object.entries(sensorsByDevice).map(([device, deviceSensors]) => {
+          const coords = getDeviceCoordinates(deviceSensors);
+          return (
+            <AccordionItem value={device} key={device}>
+              <AccordionTrigger>
+                {device}
+                {coords && (
+                  <span className="ml-4 text-xs text-muted-foreground">({coords.lat}, {coords.lon})</span>
+                )}
+              </AccordionTrigger>
+              <AccordionContent>
+                <ResponsiveGridLayout
+                  className="layout"
+                  layouts={{ lg: getGridLayout(device, deviceSensors) }}
+                  breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                  cols={{ lg: 6, md: 4, sm: 2, xs: 1, xxs: 1 }}
+                  rowHeight={80}
+                  isResizable
+                  isDraggable
+                  onLayoutChange={l => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
+                  measureBeforeMount={false}
+                  useCSSTransforms={true}
+                  compactType="vertical"
+                  preventCollision={false}
+                >
+                  {deviceSensors.filter(s => !deleted[s.topic]).map((sensor) => {
+                    const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
+                    const chartData = {
+                      labels: displayHistory.map(p => parseISO(p.timestamp)),
+                      datasets: [
+                        {
+                          label: sensor.displayName,
+                          data: displayHistory.map(p => p.value),
+                        },
+                      ],
+                    };
+                    let IconComponent = LineChartIcon;
+                    if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
+                    if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
+                    const grid = (layoutByDevice[device] || []).find(l => l.i === sensor.topic) || { i: sensor.topic, x: 0, y: 0, w: 2, h: 4 };
+                    return (
+                      <div key={sensor.topic} data-grid={grid}>
+                        <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative">
+                          <div className="absolute top-2 right-2 flex gap-2 z-10">
+                            <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
+                              {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
+                            </Button>
+                            <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="font-headline flex items-center justify-between text-xl">
+                              <span className="flex items-center">
+                                <IconComponent className="mr-2 h-5 w-5 text-primary shrink-0" />
+                                {sensor.displayName}
+                              </span>
+                              <span className="text-2xl font-bold text-right text-primary">
+                                {sensor.latestValue !== null ? `${sensor.latestValue.toFixed(1)} ${sensor.unit}` : '--'}
+                              </span>
+                            </CardTitle>
+                            <CardDescription className="text-xs">
+                              Topic: {sensor.topic} <br />
+                              Last update: {formatDisplayTimestamp(sensor.lastUpdateTimestamp)}
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent>
+                            {!minimized[sensor.topic] && (
+                              <div className="h-60 w-full">
+                                {displayHistory.length > 1 ? (
+                                  <Line options={chartOptions as any} data={chartData} />
+                                ) : (
+                                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                                    <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <= 1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    );
+                  })}
+                </ResponsiveGridLayout>
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
       </Accordion>
 
       {Object.keys(sensors).length > 0 && (
