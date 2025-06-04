@@ -25,6 +25,7 @@ const MAX_HISTORY_POINTS_PER_SENSOR = 300; // Approx 5 mins of data at 1s interv
 interface HistoryPoint {
   value: number;
   timestamp: string;
+  device?: string;
 }
 
 interface SensorDataEntry {
@@ -147,7 +148,7 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             }
             const sensorEntry = sensorDataStore.get(topic)!;
             sensorEntry.currentUnit = finalPayload.unit;
-            sensorEntry.history.push({ value: finalPayload.value, timestamp: finalPayload.timestamp });
+            sensorEntry.history.push({ value: finalPayload.value, timestamp: finalPayload.timestamp, device: finalPayload.device });
             if (sensorEntry.history.length > MAX_HISTORY_POINTS_PER_SENSOR) {
               sensorEntry.history.splice(0, sensorEntry.history.length - MAX_HISTORY_POINTS_PER_SENSOR);
             }

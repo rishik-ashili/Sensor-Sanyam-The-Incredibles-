@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock } from 'lucide-react';
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -20,6 +20,10 @@ import {
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { format as formatDate, parseISO, subMinutes, isAfter } from 'date-fns';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import GridLayout, { Responsive, WidthProvider, Layout } from 'react-grid-layout';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
 
 ChartJS.register(
   CategoryScale,
@@ -75,6 +79,7 @@ interface SensorDisplayData {
   topic: string;
   displayName: string;
   lastUpdateTimestamp: string | null; // Store raw ISO string
+  device?: string;
 }
 
 interface SensorsState {
@@ -87,6 +92,7 @@ function formatTopicName(topic: string): string {
   return significantPart.charAt(0).toUpperCase() + significantPart.slice(1).replace(/([A-Z])/g, ' $1').trim();
 }
 
+const ResponsiveGridLayout = WidthProvider(Responsive);
 
 export default function DashboardPage() {
   const [backendApiStatusMessage, setBackendApiStatusMessage] = useState<string>('Checking API status...');
@@ -96,6 +102,15 @@ export default function DashboardPage() {
   const [lastSensorError, setLastSensorError] = useState<SensorErrorData | null>(null);
   const [isSocketConnecting, setIsSocketConnecting] = useState<boolean>(true);
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRangeOption>('all');
+  const [minimized, setMinimized] = useState<{ [key: string]: boolean }>({});
+  const [deleted, setDeleted] = useState<{ [key: string]: boolean }>({});
+  const [layoutByDevice, setLayoutByDevice] = useState<{ [device: string]: Layout[] }>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sensorGridLayoutByDevice');
+      return saved ? JSON.parse(saved) : {};
+    }
+    return {};
+  });
 
   useEffect(() => {
     async function fetchBackendStatus() {
@@ -165,6 +180,7 @@ export default function DashboardPage() {
       console.log(`[DashboardPage] Received initial_sensor_history for ${data.topic}`, data);
       setSensors(prevSensors => {
         const latestPoint = data.history.length > 0 ? data.history[data.history.length - 1] : null;
+        const device = data.history.length > 0 && (data.history[data.history.length - 1] as any).device;
         return {
           ...prevSensors,
           [data.topic]: {
@@ -174,6 +190,7 @@ export default function DashboardPage() {
             topic: data.topic,
             displayName: formatTopicName(data.topic),
             lastUpdateTimestamp: latestPoint ? latestPoint.timestamp : null,
+            device: device || prevSensors[data.topic]?.device || 'Unknown',
           },
         };
       });
@@ -210,6 +227,7 @@ export default function DashboardPage() {
             topic: data.topic,
             displayName: existingSensor?.displayName || formatTopicName(data.topic),
             lastUpdateTimestamp: data.payload.timestamp,
+            device: (data.payload as any).device || existingSensor?.device || 'Unknown',
           },
         };
       });
@@ -226,6 +244,25 @@ export default function DashboardPage() {
       setSocket(null);
       setIsSocketConnecting(true);
     };
+  }, []);
+
+  // Persist layoutByDevice
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('sensorGridLayoutByDevice', JSON.stringify(layoutByDevice));
+      localStorage.setItem('sensorDeleted', JSON.stringify(deleted));
+      localStorage.setItem('sensorMinimized', JSON.stringify(minimized));
+    }
+  }, [layoutByDevice, deleted, minimized]);
+
+  // Restore deleted/minimized state
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const del = localStorage.getItem('sensorDeleted');
+      if (del) setDeleted(JSON.parse(del));
+      const min = localStorage.getItem('sensorMinimized');
+      if (min) setMinimized(JSON.parse(min));
+    }
   }, []);
 
   const getMqttStatusDisplay = () => {
@@ -337,6 +374,37 @@ export default function DashboardPage() {
     { label: 'Last 15 Minutes', value: '15m' },
   ];
 
+  const sensorsByDevice = useMemo(() => {
+    const grouped: { [device: string]: SensorDisplayData[] } = {};
+    Object.values(sensors).forEach(sensor => {
+      const device = sensor.device || 'Unknown';
+      if (!grouped[device]) grouped[device] = [];
+      grouped[device].push(sensor);
+    });
+    return grouped;
+  }, [sensors]);
+
+  const getGridLayout = useCallback((device: string, deviceSensors: SensorDisplayData[]) => {
+    const layout = layoutByDevice[device];
+    if (layout && layout.length > 0) {
+      // Only return layout for sensors in this device group
+      return layout.filter(l => deviceSensors.some(s => s.topic === l.i));
+    }
+    // Default grid: 3 per row
+    return deviceSensors.filter(s => !deleted[s.topic]).map((sensor, i) => ({
+      i: sensor.topic,
+      x: (i % 3) * 2,
+      y: Math.floor(i / 3) * 2,
+      w: 2,
+      h: minimized[sensor.topic] ? 1 : 4,
+      minW: 2,
+      minH: 1,
+      maxH: 8,
+      maxW: 4,
+      static: false,
+    }));
+  }, [layoutByDevice, deleted, minimized]);
+
   return (
     <div className="space-y-8 p-2 md:p-6">
       <Card className="border border-border shadow-md">
@@ -390,65 +458,88 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
-        {Object.keys(sensors).length === 0 && !isSocketConnecting && mqttStatus.connected && (
-          <Card className="md:col-span-1 lg:col-span-2 xl:col-span-3 shadow-md">
-            <CardHeader>
-              <CardTitle className="flex items-center"><Info className="mr-2 h-5 w-5 text-primary" />Waiting for Sensor Data</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">No sensor data has been received yet. Ensure your sensors are publishing to the configured MQTT topics (e.g., sensorflow/demo/&lt;sensor_name&gt;).</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {Object.values(sensors).map((sensor) => {
-          const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
-          const chartData = {
-            labels: displayHistory.map(p => parseISO(p.timestamp)),
-            datasets: [
-              {
-                label: sensor.displayName,
-                data: displayHistory.map(p => p.value),
-              },
-            ],
-          };
-          let IconComponent = LineChartIcon;
-          if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
-          if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
-
-          return (
-            <Card key={sensor.topic} className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border">
-              <CardHeader className="pb-2">
-                <CardTitle className="font-headline flex items-center justify-between text-xl">
-                  <span className="flex items-center">
-                    <IconComponent className="mr-2 h-5 w-5 text-primary shrink-0" />
-                    {sensor.displayName}
-                  </span>
-                  <span className="text-2xl font-bold text-right text-primary">
-                    {sensor.latestValue !== null ? `${sensor.latestValue.toFixed(1)} ${sensor.unit}` : '--'}
-                  </span>
-                </CardTitle>
-                <CardDescription className="text-xs">
-                  Topic: {sensor.topic} <br />
-                  Last update: {formatDisplayTimestamp(sensor.lastUpdateTimestamp)}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-60 w-full">
-                  {displayHistory.length > 1 ? (
-                    <Line options={chartOptions as any} data={chartData} />
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-muted-foreground">
-                      <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <= 1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
+      <Accordion type="multiple" collapsible="true" defaultValue={Object.keys(sensorsByDevice)}>
+        {Object.entries(sensorsByDevice).map(([device, deviceSensors]) => (
+          <AccordionItem value={device} key={device}>
+            <AccordionTrigger>{device}</AccordionTrigger>
+            <AccordionContent>
+              <ResponsiveGridLayout
+                className="layout"
+                layouts={{ lg: getGridLayout(device, deviceSensors) }}
+                breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                cols={{ lg: 6, md: 4, sm: 2, xs: 1, xxs: 1 }}
+                rowHeight={80}
+                isResizable
+                isDraggable
+                onLayoutChange={l => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
+                measureBeforeMount={false}
+                useCSSTransforms={true}
+                compactType="vertical"
+                preventCollision={false}
+              >
+                {deviceSensors.filter(s => !deleted[s.topic]).map((sensor) => {
+                  const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
+                  const chartData = {
+                    labels: displayHistory.map(p => parseISO(p.timestamp)),
+                    datasets: [
+                      {
+                        label: sensor.displayName,
+                        data: displayHistory.map(p => p.value),
+                      },
+                    ],
+                  };
+                  let IconComponent = LineChartIcon;
+                  if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
+                  if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
+                  const grid = (layoutByDevice[device] || []).find(l => l.i === sensor.topic) || { i: sensor.topic, x: 0, y: 0, w: 2, h: 4 };
+                  return (
+                    <div key={sensor.topic} data-grid={grid}>
+                      <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative">
+                        <div className="absolute top-2 right-2 flex gap-2 z-10">
+                          <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
+                            {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
+                          </Button>
+                          <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <CardHeader className="pb-2">
+                          <CardTitle className="font-headline flex items-center justify-between text-xl">
+                            <span className="flex items-center">
+                              <IconComponent className="mr-2 h-5 w-5 text-primary shrink-0" />
+                              {sensor.displayName}
+                            </span>
+                            <span className="text-2xl font-bold text-right text-primary">
+                              {sensor.latestValue !== null ? `${sensor.latestValue.toFixed(1)} ${sensor.unit}` : '--'}
+                            </span>
+                          </CardTitle>
+                          <CardDescription className="text-xs">
+                            Topic: {sensor.topic} <br />
+                            Last update: {formatDisplayTimestamp(sensor.lastUpdateTimestamp)}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          {!minimized[sensor.topic] && (
+                            <div className="h-60 w-full">
+                              {displayHistory.length > 1 ? (
+                                <Line options={chartOptions as any} data={chartData} />
+                              ) : (
+                                <div className="flex items-center justify-center h-full text-muted-foreground">
+                                  <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <= 1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                  );
+                })}
+              </ResponsiveGridLayout>
+            </AccordionContent>
+          </AccordionItem>
+        ))}
+      </Accordion>
 
       {Object.keys(sensors).length > 0 && (
         <Card className="shadow-md mt-8 border border-border">

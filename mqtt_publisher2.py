@@ -22,25 +22,37 @@ client.connect(MQTT_BROKER, MQTT_PORT, 60)
 # Start the network loop
 client.loop_start()
 
-# Sensor configurations
+# Sensor configurations - different ranges and types
 sensors = [
     {
-        "name": "temperature",
-        "min": 20,
-        "max": 30,
+        "name": "temperature2",  # Different name to distinguish from first publisher
+        "min": 15,
+        "max": 35,
         "unit": "°C"
     },
     {
-        "name": "humidity",
-        "min": 40,
-        "max": 60,
+        "name": "humidity2",
+        "min": 30,
+        "max": 80,
         "unit": "%"
     },
     {
-        "name": "pressure",
-        "min": 980,
-        "max": 1020,
+        "name": "pressure2",
+        "min": 950,
+        "max": 1050,
         "unit": "hPa"
+    },
+    {
+        "name": "light",
+        "min": 0,
+        "max": 1000,
+        "unit": "lux"
+    },
+    {
+        "name": "co2",
+        "min": 400,
+        "max": 2000,
+        "unit": "ppm"
     }
 ]
 
@@ -55,7 +67,7 @@ try:
                 "value": round(value, 2),
                 "timestamp": datetime.utcnow().isoformat(),
                 "unit": sensor["unit"],
-                "device": "rpi1"
+                "device": "rpi2"
             }
             
             # Publish to topic
@@ -63,8 +75,8 @@ try:
             client.publish(topic, json.dumps(payload))
             print(f"Published to {topic}: {payload}")
             
-        # Wait for 1 second before next update
-        time.sleep(1)
+        # Wait for 1.5 seconds before next update (slightly different from first publisher)
+        time.sleep(1.5)
 
 except KeyboardInterrupt:
     print("\nStopping MQTT publisher...")
