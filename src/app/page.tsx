@@ -5,7 +5,7 @@ import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle } from 'lucide-react';
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -24,6 +24,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/
 import GridLayout, { Responsive, WidthProvider, Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 ChartJS.register(
   CategoryScale,
@@ -105,6 +106,8 @@ function debounce(fn: (...args: any[]) => void, delay: number) {
 }
 
 export default function DashboardPage() {
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [showReadyDialog, setShowReadyDialog] = useState(false);
   const [backendApiStatusMessage, setBackendApiStatusMessage] = useState<string>('Checking API status...');
   const [mqttStatus, setMqttStatus] = useState<MqttStatus>({ connected: false, message: 'Initializing MQTT connection...' });
   const [sensors, setSensors] = useState<SensorsState>({});
@@ -123,6 +126,33 @@ export default function DashboardPage() {
   });
   const socketRef = useRef<ClientSocket | null>(null);
   const debouncedSetSensors = useRef(debounce((updater) => setSensors(updater), 100)).current;
+  const [savedDevices, setSavedDevices] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('savedDevices');
+        const parsed = saved ? JSON.parse(saved) : [];
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    // Initial loading timer
+    const loadingTimer = setTimeout(() => {
+      setIsInitialLoading(false);
+      setShowReadyDialog(true);
+      setTimeout(() => {
+        setShowReadyDialog(false);
+      }, 1000);
+    }, 15000);
+
+    return () => {
+      clearTimeout(loadingTimer);
+    };
+  }, []);
 
   useEffect(() => {
     async function fetchBackendStatus() {
@@ -283,6 +313,13 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // Persist savedDevices
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('savedDevices', JSON.stringify(savedDevices));
+    }
+  }, [savedDevices]);
+
   const getMqttStatusDisplay = () => {
     if (isSocketConnecting && !socket?.connected) {
       return { text: "Connecting to real-time service...", Icon: Loader2, color: "text-yellow-500", iconColor: "text-yellow-500", className: "animate-spin" };
@@ -429,195 +466,272 @@ export default function DashboardPage() {
     return sensorWithCoords?.coordinates;
   };
 
-  return (
-    <div className="space-y-8 p-2 md:p-6">
-      <Card className="border border-border shadow-md">
-        <CardHeader>
-          <CardTitle className="font-headline flex items-center text-xl">
-            <mqttDisplay.Icon className={`mr-3 h-6 w-6 ${mqttDisplay.iconColor} ${mqttDisplay.className || ''}`} />
-            MQTT Broker Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className={`text-base font-medium ${mqttDisplay.color}`}>
-            {mqttDisplay.text}
-          </p>
-          <p className="text-xs text-muted-foreground mt-2">API Service Status: {backendApiStatusMessage}</p>
-        </CardContent>
-      </Card>
+  // Helper: get all device names from live data
+  const liveDeviceNames = useMemo(() => Object.keys(sensorsByDevice), [sensorsByDevice]);
 
-      {lastSensorError && (
-        <Card className="bg-destructive/10 border-destructive/30 shadow-md">
+  // Helper: get all device names to show (union of saved and live)
+  const allDeviceNames = useMemo(() => {
+    const set = new Set([...savedDevices, ...liveDeviceNames]);
+    return Array.from(set);
+  }, [savedDevices, liveDeviceNames]);
+
+  // Helper: is device online?
+  const isDeviceOnline = (device: string) => liveDeviceNames.includes(device);
+
+  // Helper: get sensors for a device (empty array if offline)
+  const getDeviceSensors = (device: string) => sensorsByDevice[device] || [];
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Loading Overlay */}
+      {isInitialLoading && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary mb-4"></div>
+          <div className="text-2xl font-semibold mb-2">Loading Dashboard</div>
+          <div className="text-muted-foreground text-center max-w-md">
+            <p>Fetching sensor data and generating meaningful graphs...</p>
+            <p className="mt-2">This may take up to 15 seconds to ensure accurate visualization.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Ready Dialog */}
+      <Dialog open={showReadyDialog} onOpenChange={setShowReadyDialog}>
+        <DialogContent className="sm:max-w-md">
+          <div className="flex flex-col items-center justify-center p-4">
+            <div className="text-2xl font-semibold text-green-600 mb-2">Ready to Go!</div>
+            <p className="text-center text-muted-foreground">
+              Your dashboard is now fully loaded and ready to use.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <div className="space-y-8 p-2 md:p-6">
+        <Card className="border border-border shadow-md">
           <CardHeader>
-            <CardTitle className="text-destructive flex items-center">
-              <AlertTriangle className="h-5 w-5 mr-2 shrink-0" />Sensor Data Error
+            <CardTitle className="font-headline flex items-center text-xl">
+              <mqttDisplay.Icon className={`mr-3 h-6 w-6 ${mqttDisplay.iconColor} ${mqttDisplay.className || ''}`} />
+              MQTT Broker Status
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-destructive text-sm space-y-1">
-            <p><strong>Topic:</strong> {lastSensorError.topic}</p>
-            <p><strong>Details:</strong> {lastSensorError.error}.</p>
-            <p><strong>Received:</strong> "{lastSensorError.rawMessage.substring(0, 100)}{lastSensorError.rawMessage.length > 100 ? '...' : ''}"</p>
+          <CardContent>
+            <p className={`text-base font-medium ${mqttDisplay.color}`}>
+              {mqttDisplay.text}
+            </p>
+            <p className="text-xs text-muted-foreground mt-2">API Service Status: {backendApiStatusMessage}</p>
           </CardContent>
         </Card>
-      )}
 
-      <Card className="border border-border shadow-md">
-        <CardHeader>
-          <CardTitle className="font-headline flex items-center text-lg">
-            <Clock className="mr-2 h-5 w-5 text-primary" />
-            Graph Time Range
-          </CardTitle>
-          <CardDescription>Select the historical data range to display on the charts.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          {timeRangeOptions.map(opt => (
-            <Button
-              key={opt.value}
-              variant={selectedTimeRange === opt.value ? 'default' : 'outline'}
-              onClick={() => setSelectedTimeRange(opt.value)}
-            >
-              {opt.label}
-            </Button>
-          ))}
-        </CardContent>
-      </Card>
+        {lastSensorError && (
+          <Card className="bg-destructive/10 border-destructive/30 shadow-md">
+            <CardHeader>
+              <CardTitle className="text-destructive flex items-center">
+                <AlertTriangle className="h-5 w-5 mr-2 shrink-0" />Sensor Data Error
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-destructive text-sm space-y-1">
+              <p><strong>Topic:</strong> {lastSensorError.topic}</p>
+              <p><strong>Details:</strong> {lastSensorError.error}.</p>
+              <p><strong>Received:</strong> "{lastSensorError.rawMessage.substring(0, 100)}{lastSensorError.rawMessage.length > 100 ? '...' : ''}"</p>
+            </CardContent>
+          </Card>
+        )}
 
-      <Button
-        className="mb-4 mt-4"
-        variant="secondary"
-        onClick={() => {
-          setDeleted({});
-          setMinimized({});
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('sensorDeleted');
-            localStorage.removeItem('sensorMinimized');
-          }
-        }}
-      >
-        Restore All Tiles
-      </Button>
+        <Card className="border border-border shadow-md">
+          <CardHeader>
+            <CardTitle className="font-headline flex items-center text-lg">
+              <Clock className="mr-2 h-5 w-5 text-primary" />
+              Graph Time Range
+            </CardTitle>
+            <CardDescription>Select the historical data range to display on the charts.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-2">
+            {timeRangeOptions.map(opt => (
+              <Button
+                key={opt.value}
+                variant={selectedTimeRange === opt.value ? 'default' : 'outline'}
+                onClick={() => setSelectedTimeRange(opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
 
-      <Accordion type="multiple" collapsible="true" defaultValue={Object.keys(sensorsByDevice)}>
-        {Object.entries(sensorsByDevice).map(([device, deviceSensors]) => {
-          const coords = getDeviceCoordinates(deviceSensors);
-          return (
-            <AccordionItem value={device} key={device}>
-              <AccordionTrigger>
-                {device}
-                {coords && (
-                  <span className="ml-4 text-xs text-muted-foreground">({coords.lat}, {coords.lon})</span>
-                )}
-              </AccordionTrigger>
-              <AccordionContent>
-                <ResponsiveGridLayout
-                  className="layout"
-                  layouts={{ lg: getGridLayout(device, deviceSensors) }}
-                  breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
-                  cols={{ lg: 6, md: 4, sm: 2, xs: 1, xxs: 1 }}
-                  rowHeight={80}
-                  isResizable
-                  isDraggable
-                  onLayoutChange={l => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
-                  measureBeforeMount={false}
-                  useCSSTransforms={true}
-                  compactType="vertical"
-                  preventCollision={false}
-                >
-                  {deviceSensors.filter(s => !deleted[s.topic]).map((sensor) => {
-                    const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
-                    const chartData = {
-                      labels: displayHistory.map(p => parseISO(p.timestamp)),
-                      datasets: [
-                        {
-                          label: sensor.displayName,
-                          data: displayHistory.map(p => p.value),
-                        },
-                      ],
-                    };
-                    let IconComponent = LineChartIcon;
-                    if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
-                    if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
-                    const grid = (layoutByDevice[device] || []).find(l => l.i === sensor.topic) || { i: sensor.topic, x: 0, y: 0, w: 2, h: 4 };
-                    return (
-                      <div key={sensor.topic} data-grid={grid}>
-                        <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative">
-                          <div className="absolute top-2 right-2 flex gap-2 z-10">
-                            <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
-                              {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
-                            </Button>
-                            <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          </div>
-                          <CardHeader className="pb-2">
-                            <CardTitle className="font-headline flex items-center justify-between text-xl">
-                              <span className="flex items-center">
-                                <IconComponent className="mr-2 h-5 w-5 text-primary shrink-0" />
-                                {sensor.displayName}
-                              </span>
-                              <span className="text-2xl font-bold text-right text-primary">
-                                {sensor.latestValue !== null ? `${sensor.latestValue.toFixed(1)} ${sensor.unit}` : '--'}
-                              </span>
-                            </CardTitle>
-                            <CardDescription className="text-xs">
-                              Topic: {sensor.topic} <br />
-                              Last update: {formatDisplayTimestamp(sensor.lastUpdateTimestamp)}
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent>
-                            {!minimized[sensor.topic] && (
-                              <div className="h-60 w-full">
-                                {displayHistory.length > 1 ? (
-                                  <Line options={chartOptions as any} data={chartData} />
-                                ) : (
-                                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                                    <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <= 1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
+        <Button
+          className="mb-4 mt-4"
+          variant="secondary"
+          onClick={() => {
+            setDeleted({});
+            setMinimized({});
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('sensorDeleted');
+              localStorage.removeItem('sensorMinimized');
+            }
+          }}
+        >
+          Restore All Tiles
+        </Button>
+
+        <Accordion type="multiple" collapsible="true" defaultValue={allDeviceNames}>
+          {allDeviceNames.map((device) => {
+            const deviceSensors = getDeviceSensors(device);
+            const coords = getDeviceCoordinates(deviceSensors);
+            const online = isDeviceOnline(device);
+            const saved = savedDevices.includes(device);
+            return (
+              <AccordionItem value={device} key={device}>
+                <AccordionTrigger>
+                  <span className="flex items-center gap-2">
+                    {device}
+                    {coords && (
+                      <span className="ml-2 text-xs text-muted-foreground">({coords.lat}, {coords.lon})</span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant={saved ? 'default' : 'outline'}
+                      className="ml-2 px-2 py-1 h-7"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setSavedDevices(prev =>
+                          prev.includes(device)
+                            ? prev.filter(d => d !== device)
+                            : [...prev, device]
+                        );
+                      }}
+                    >
+                      <Bookmark className={`h-4 w-4 mr-1 ${saved ? 'text-yellow-500' : 'text-gray-400'}`} />
+                      {saved ? 'Saved' : 'Unsaved'}
+                    </Button>
+                    <span className="ml-2 flex items-center text-xs">
+                      {online ? (
+                        <>
+                          <Circle className="h-3 w-3 text-green-500 mr-1" /> Online
+                        </>
+                      ) : (
+                        <>
+                          <Circle className="h-3 w-3 text-red-500 mr-1" /> Offline
+                        </>
+                      )}
+                    </span>
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent>
+                  {online ? (
+                    <ResponsiveGridLayout
+                      className="layout"
+                      layouts={{ lg: getGridLayout(device, deviceSensors) }}
+                      breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
+                      cols={{ lg: 6, md: 4, sm: 2, xs: 1, xxs: 1 }}
+                      rowHeight={80}
+                      isResizable
+                      isDraggable
+                      onLayoutChange={l => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
+                      measureBeforeMount={false}
+                      useCSSTransforms={true}
+                      compactType="vertical"
+                      preventCollision={false}
+                    >
+                      {deviceSensors.filter(s => !deleted[s.topic]).map((sensor) => {
+                        const displayHistory = getFilteredHistory(sensor.history, selectedTimeRange);
+                        const chartData = {
+                          labels: displayHistory.map(p => parseISO(p.timestamp)),
+                          datasets: [
+                            {
+                              label: sensor.displayName,
+                              data: displayHistory.map(p => p.value),
+                            },
+                          ],
+                        };
+                        let IconComponent = LineChartIcon;
+                        if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
+                        if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
+                        const grid = (layoutByDevice[device] || []).find(l => l.i === sensor.topic) || { i: sensor.topic, x: 0, y: 0, w: 2, h: 4 };
+                        return (
+                          <div key={sensor.topic} data-grid={grid}>
+                            <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative">
+                              <div className="absolute top-2 right-2 flex gap-2 z-10">
+                                <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
+                                  {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
+                                </Button>
+                                <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
+                                  <XCircle className="h-4 w-4" />
+                                </Button>
+                              </div>
+                              <CardHeader className="pb-2">
+                                <CardTitle className="font-headline flex items-center justify-between text-xl">
+                                  <span className="flex items-center">
+                                    <IconComponent className="mr-2 h-5 w-5 text-primary shrink-0" />
+                                    {sensor.displayName}
+                                  </span>
+                                  <span className="text-2xl font-bold text-right text-primary">
+                                    {sensor.latestValue !== null ? `${sensor.latestValue.toFixed(1)} ${sensor.unit}` : '--'}
+                                  </span>
+                                </CardTitle>
+                                <CardDescription className="text-xs">
+                                  Topic: {sensor.topic} <br />
+                                  Last update: {formatDisplayTimestamp(sensor.lastUpdateTimestamp)}
+                                </CardDescription>
+                              </CardHeader>
+                              <CardContent>
+                                {!minimized[sensor.topic] && (
+                                  <div className="h-60 w-full">
+                                    {displayHistory.length > 1 ? (
+                                      <Line options={chartOptions as any} data={chartData} />
+                                    ) : (
+                                      <div className="flex items-center justify-center h-full text-muted-foreground">
+                                        <p>{sensor.history.length === 0 ? "No data yet." : (displayHistory.length <= 1 ? "Need more data for selected range to plot graph." : "Need more data to plot graph.")}</p>
+                                      </div>
+                                    )}
                                   </div>
                                 )}
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </div>
-                    );
-                  })}
-                </ResponsiveGridLayout>
-              </AccordionContent>
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
+                              </CardContent>
+                            </Card>
+                          </div>
+                        );
+                      })}
+                    </ResponsiveGridLayout>
+                  ) : (
+                    <div className="p-8 text-center text-muted-foreground">No data received. Device is offline.</div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            );
+          })}
+        </Accordion>
 
-      {Object.keys(sensors).length > 0 && (
-        <Card className="shadow-md mt-8 border border-border">
-          <CardHeader>
-            <CardTitle className="font-headline text-xl">Sensor Summary</CardTitle>
-            <CardDescription>Latest readings from all active sensors.</CardDescription>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Sensor</TableHead>
-                  <TableHead className="text-right">Latest Value</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead>Last Updated</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
-                  <TableRow key={sensor.topic}>
-                    <TableCell className="font-medium whitespace-nowrap">{sensor.displayName}</TableCell>
-                    <TableCell className="text-right">{sensor.latestValue !== null ? sensor.latestValue.toFixed(1) : '--'}</TableCell>
-                    <TableCell>{sensor.unit}</TableCell>
-                    <TableCell className="whitespace-nowrap">{formatDisplayTimestamp(sensor.lastUpdateTimestamp)}</TableCell>
+        {Object.keys(sensors).length > 0 && (
+          <Card className="shadow-md mt-8 border border-border">
+            <CardHeader>
+              <CardTitle className="font-headline text-xl">Sensor Summary</CardTitle>
+              <CardDescription>Latest readings from all active sensors.</CardDescription>
+            </CardHeader>
+            <CardContent className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Sensor</TableHead>
+                    <TableHead className="text-right">Latest Value</TableHead>
+                    <TableHead>Unit</TableHead>
+                    <TableHead>Last Updated</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                </TableHeader>
+                <TableBody>
+                  {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
+                    <TableRow key={sensor.topic}>
+                      <TableCell className="font-medium whitespace-nowrap">{sensor.displayName}</TableCell>
+                      <TableCell className="text-right">{sensor.latestValue !== null ? sensor.latestValue.toFixed(1) : '--'}</TableCell>
+                      <TableCell>{sensor.unit}</TableCell>
+                      <TableCell className="whitespace-nowrap">{formatDisplayTimestamp(sensor.lastUpdateTimestamp)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

@@ -44,10 +44,13 @@ sensors = [
     }
 ]
 
+# Initialize current values for random walk
+current_values = [random.uniform(sensor["min"], sensor["max"]) for sensor in sensors]
+
 # Burst publish on startup to quickly populate backend buffer
 for _ in range(5):
-    for sensor in sensors:
-        value = random.uniform(sensor["min"], sensor["max"])
+    for i, sensor in enumerate(sensors):
+        value = current_values[i]
         payload = {
             "value": round(value, 2),
             "timestamp": datetime.utcnow().isoformat(),
@@ -61,10 +64,11 @@ for _ in range(5):
 
 try:
     while True:
-        for sensor in sensors:
-            # Generate random value within range
-            value = random.uniform(sensor["min"], sensor["max"])
-            
+        for i, sensor in enumerate(sensors):
+            # Random walk: small change from previous value
+            delta = random.uniform(-0.5, 0.5)
+            current_values[i] = min(max(current_values[i] + delta, sensor["min"]), sensor["max"])
+            value = current_values[i]
             # Create payload
             payload = {
                 "value": round(value, 2),
@@ -73,12 +77,10 @@ try:
                 "device": "rpi1",
                 "coordinates": {"lat": 12.9716, "lon": 77.5946}
             }
-            
             # Publish to topic
             topic = f"{BASE_TOPIC}/{sensor['name']}"
             client.publish(topic, json.dumps(payload))
             print(f"Published to {topic}: {payload}")
-            
         # Wait for 1 second before next update
         time.sleep(1)
 
