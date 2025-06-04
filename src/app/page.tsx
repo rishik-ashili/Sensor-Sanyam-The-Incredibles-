@@ -17,6 +17,7 @@ import {
   Tooltip as ChartJsTooltip,
   Legend as ChartJsLegend,
   TimeScale,
+  BarElement,
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { format as formatDate, parseISO, subMinutes, isAfter } from 'date-fns';
@@ -25,6 +26,7 @@ import GridLayout, { Responsive, WidthProvider, Layout } from 'react-grid-layout
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Accordion as ShadAccordion, AccordionItem as ShadAccordionItem, AccordionTrigger as ShadAccordionTrigger, AccordionContent as ShadAccordionContent } from "@/components/ui/accordion";
 
 ChartJS.register(
   CategoryScale,
@@ -34,7 +36,8 @@ ChartJS.register(
   ChartJsTitle,
   ChartJsTooltip,
   ChartJsLegend,
-  TimeScale
+  TimeScale,
+  BarElement
 );
 
 const MAX_HISTORY_POINTS_CLIENT = 50; // Max history points to keep on client if receiving rapidly before initial load
@@ -105,6 +108,67 @@ function debounce(fn: (...args: any[]) => void, delay: number) {
   };
 }
 
+// Helper for change rate (delta)
+function getDelta(arr) {
+  if (arr.length < 2) return [];
+  return arr.map((v, i) => (i === 0 ? null : v - arr[i - 1]));
+}
+
+// Helper for uptime (simulate: if last update < 2x interval, online)
+function getUptime(timestamps, interval = 1000) {
+  if (!timestamps.length) return [];
+  const bins = [];
+  let last = new Date(timestamps[0]).getTime();
+  for (let i = 1; i < timestamps.length; i++) {
+    const t = new Date(timestamps[i]).getTime();
+    bins.push(t - last < interval * 2 ? 1 : 0);
+    last = t;
+  }
+  return [1, ...bins];
+}
+
+// Helper for hourly bar chart
+function getHourlyAverages(timestamps, values) {
+  const byHour = {};
+  timestamps.forEach((ts, i) => {
+    const d = new Date(ts);
+    const hour = d.getHours();
+    if (!byHour[hour]) byHour[hour] = [];
+    byHour[hour].push(values[i]);
+  });
+  return Object.keys(byHour).map(h => ({ hour: h, avg: byHour[h].reduce((a, b) => a + b, 0) / byHour[h].length }));
+}
+
+// Helper for heatmap (hour x minute, value)
+function getHeatmapData(timestamps, values) {
+  const map = {};
+  timestamps.forEach((ts, i) => {
+    const d = new Date(ts);
+    const key = `${d.getHours()}:${d.getMinutes()}`;
+    if (!map[key]) map[key] = [];
+    map[key].push(values[i]);
+  });
+  return Object.entries(map).map(([k, v]) => ({ time: k, avg: v.reduce((a, b) => a + b, 0) / v.length }));
+}
+
+// Helper for histogram (all sensors)
+function getAllSensorPeaks(sensors) {
+  return Object.values(sensors).map(sensor => {
+    const values = sensor.history.map(p => p.value);
+    return values.length ? Math.max(...values) : null;
+  }).filter(v => v !== null);
+}
+
+// Helper for 5s peak per sensor (dynamic)
+function get5sPeak(sensors) {
+  const now = Date.now();
+  return Object.values(sensors).map(sensor => {
+    const recent = sensor.history.filter(p => now - new Date(p.timestamp).getTime() <= 5000);
+    const peak = recent.length ? Math.max(...recent.map(p => p.value)) : null;
+    return peak;
+  });
+}
+
 export default function DashboardPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
@@ -138,6 +202,7 @@ export default function DashboardPage() {
     }
     return [];
   });
+  const [minimizedAnalytics, setMinimizedAnalytics] = useState<{ [topic: string]: boolean }>({});
 
   useEffect(() => {
     // Initial loading timer
@@ -737,84 +802,178 @@ export default function DashboardPage() {
 
         {/* --- Analytics & Insights Section --- */}
         {Object.keys(sensors).length > 0 && (
-          <Card className="shadow-md mt-8 border border-border">
-            <CardHeader>
-              <CardTitle className="font-headline text-xl">Analytics & Insights</CardTitle>
-              <CardDescription>Statistical insights and advanced analytics for each sensor.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-8">
-              {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => {
-                // Sort history by timestamp
-                const sortedHistory = [...sensor.history].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                const values = sortedHistory.map(p => p.value);
-                const timestamps = sortedHistory.map(p => p.timestamp);
-                // Basic stats
-                const current = sensor.latestValue;
-                const lastUpdated = sensor.lastUpdateTimestamp;
-                const max = values.length ? Math.max(...values) : null;
-                const min = values.length ? Math.min(...values) : null;
-                const avg = values.length ? (values.reduce((a, b) => a + b, 0) / values.length) : null;
-                const median = values.length ? [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] : null;
-                const stddev = values.length ? Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length) : null;
-                // Rolling averages
-                function rollingAvg(arr, window) {
-                  if (arr.length < window) return [];
-                  return arr.map((_, i) => {
-                    if (i < window - 1) return null;
-                    const slice = arr.slice(i - window + 1, i + 1);
-                    return slice.reduce((a, b) => a + b, 0) / window;
-                  });
-                }
-                const rolling3 = rollingAvg(values, 3);
-                const rolling5 = rollingAvg(values, 5);
-                const rolling10 = rollingAvg(values, 10);
-                // Prepare rolling avg chart data
-                const rollingChartData = {
-                  labels: timestamps,
-                  datasets: [
-                    { label: 'Raw', data: values, borderColor: 'hsl(var(--primary))', backgroundColor: 'hsla(var(--primary),0.1)', borderWidth: 1, pointRadius: 0 },
-                    { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
-                    { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
-                    { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
-                  ],
-                };
-                return (
-                  <Card key={sensor.topic} className="border border-border">
-                    <CardHeader>
-                      <CardTitle className="font-headline text-lg flex items-center gap-2">{sensor.displayName} <span className="text-xs text-muted-foreground">({sensor.unit})</span></CardTitle>
-                      <CardDescription>Analytics for topic: {sensor.topic}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div><span className="font-semibold">Current:</span> {current !== null ? current.toFixed(2) : '--'}</div>
-                        <div><span className="font-semibold">Last Updated:</span> {formatDisplayTimestamp(lastUpdated)}</div>
-                        <div><span className="font-semibold">Peak:</span> {max !== null ? max.toFixed(2) : '--'}</div>
-                        <div><span className="font-semibold">Min:</span> {min !== null ? min.toFixed(2) : '--'}</div>
-                        <div><span className="font-semibold">Average:</span> {avg !== null ? avg.toFixed(2) : '--'}</div>
-                        <div><span className="font-semibold">Median:</span> {median !== null ? median.toFixed(2) : '--'}</div>
-                        <div><span className="font-semibold">Std Dev:</span> {stddev !== null ? stddev.toFixed(2) : '--'}</div>
-                      </div>
-                      <div className="mb-4">
-                        <span className="font-semibold">Rolling Averages (3s/5s/10s):</span>
-                        <div className="h-48 w-full">
-                          <Line options={{
+          <ShadAccordion type="single" collapsible defaultValue="analytics">
+            <ShadAccordionItem value="analytics">
+              <ShadAccordionTrigger className="text-xl font-headline">Analytics & Insights</ShadAccordionTrigger>
+              <ShadAccordionContent>
+                <Card className="shadow-md mt-4 border border-border">
+                  <CardHeader>
+                    <CardTitle className="font-headline text-xl">Analytics & Insights</CardTitle>
+                    <CardDescription>Statistical insights and advanced analytics for each sensor.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-8">
+                    {/* Histogram for all sensor peaks (now a bar chart for 5s peak) */}
+                    <div className="mb-8">
+                      <span className="font-semibold">Bar Plot of 5s Peak Values (All Sensors):</span>
+                      <div className="h-40 w-full">
+                        <Line
+                          options={{
                             ...chartOptions,
-                            plugins: { ...chartOptions.plugins, legend: { display: true } },
-                            scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'time' } },
-                          }} data={rollingChartData} />
-                        </div>
+                            plugins: { ...chartOptions.plugins, legend: { display: false } },
+                            scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'category' } },
+                          }}
+                          data={{
+                            labels: Object.values(sensors).map(s => s.displayName),
+                            datasets: [{
+                              label: '5s Peak Value',
+                              data: get5sPeak(sensors),
+                              backgroundColor: 'rgba(59,130,246,0.7)',
+                              borderColor: 'rgba(59,130,246,1)',
+                              borderWidth: 2,
+                              type: 'bar',
+                            }],
+                          }}
+                        />
                       </div>
-                      {/* Placeholders for advanced analytics/graphs */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="p-4 bg-muted/30 rounded">[Peak/Trough Markers, Anomaly Indicators, Delta/Change Rate Graph, Uptime Graph]</div>
-                        <div className="p-4 bg-muted/30 rounded">[Bar Chart, Distribution Histogram, Heatmap, Time-based Metrics]</div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </CardContent>
-          </Card>
+                    </div>
+                    {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => {
+                      // Sort history by timestamp
+                      const sortedHistory = [...sensor.history].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                      const values = sortedHistory.map(p => p.value);
+                      const timestamps = sortedHistory.map(p => p.timestamp);
+                      // Basic stats
+                      const current = sensor.latestValue;
+                      const lastUpdated = sensor.lastUpdateTimestamp;
+                      const max = values.length ? Math.max(...values) : null;
+                      const min = values.length ? Math.min(...values) : null;
+                      const avg = values.length ? (values.reduce((a, b) => a + b, 0) / values.length) : null;
+                      const median = values.length ? [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] : null;
+                      const stddev = values.length ? Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length) : null;
+                      // Rolling averages
+                      function rollingAvg(arr, window) {
+                        if (arr.length < window) return [];
+                        return arr.map((_, i) => {
+                          if (i < window - 1) return null;
+                          const slice = arr.slice(i - window + 1, i + 1);
+                          return slice.reduce((a, b) => a + b, 0) / window;
+                        });
+                      }
+                      const rolling3 = rollingAvg(values, 3);
+                      const rolling5 = rollingAvg(values, 5);
+                      const rolling10 = rollingAvg(values, 10);
+                      // Delta/change rate
+                      const delta = getDelta(values);
+                      // Uptime
+                      const uptime = getUptime(timestamps);
+                      // Hourly bar chart
+                      const hourly = getHourlyAverages(timestamps, values);
+                      // Anomaly detection (2 stddev)
+                      const anomalies = values.map((v, i) => (Math.abs(v - avg) > 2 * stddev ? { x: timestamps[i], y: v } : null)).filter(Boolean);
+                      // Peak/trough markers
+                      const peakIndex = values.length ? values.indexOf(max) : -1;
+                      const troughIndex = values.length ? values.indexOf(min) : -1;
+                      const minimized = minimizedAnalytics[sensor.topic] || false;
+                      return (
+                        <Card key={sensor.topic} className="border border-border">
+                          <CardHeader>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <CardTitle className="font-headline text-lg flex items-center gap-2">{sensor.displayName} <span className="text-xs text-muted-foreground">({sensor.unit})</span></CardTitle>
+                                <CardDescription>Analytics for topic: {sensor.topic}</CardDescription>
+                              </div>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                aria-label={minimized ? 'Expand' : 'Minimize'}
+                                onClick={() => setMinimizedAnalytics(prev => ({ ...prev, [sensor.topic]: !prev[sensor.topic] }))}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setMinimizedAnalytics(prev => ({ ...prev, [sensor.topic]: !prev[sensor.topic] })); }}
+                                className={`ml-2 cursor-pointer rounded p-1 transition-colors ${minimized ? 'bg-muted' : 'bg-muted/50'} hover:bg-muted/80 flex items-center`}
+                                style={{ outline: 'none' }}
+                              >
+                                <ChevronDown className={`h-5 w-5 transition-transform ${minimized ? '' : 'rotate-180'}`} />
+                              </span>
+                            </div>
+                          </CardHeader>
+                          {!minimized && (
+                            <CardContent>
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                                <div><span className="font-semibold">Current:</span> {current !== null ? current.toFixed(2) : '--'}</div>
+                                <div><span className="font-semibold">Last Updated:</span> {formatDisplayTimestamp(lastUpdated)}</div>
+                                <div><span className="font-semibold">Peak:</span> {max !== null ? max.toFixed(2) : '--'}</div>
+                                <div><span className="font-semibold">Min:</span> {min !== null ? min.toFixed(2) : '--'}</div>
+                                <div><span className="font-semibold">Average:</span> {avg !== null ? avg.toFixed(2) : '--'}</div>
+                                <div><span className="font-semibold">Median:</span> {median !== null ? median.toFixed(2) : '--'}</div>
+                                <div><span className="font-semibold">Std Dev:</span> {stddev !== null ? stddev.toFixed(2) : '--'}</div>
+                              </div>
+                              {/* Rolling averages with peak/trough/anomaly markers */}
+                              <div className="mb-4">
+                                <span className="font-semibold">Rolling Averages (3s/5s/10s) with Markers:</span>
+                                <div className="h-48 w-full">
+                                  <Line options={{
+                                    ...chartOptions,
+                                    plugins: { ...chartOptions.plugins, legend: { display: true } },
+                                    scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'time' } },
+                                  }} data={{
+                                    labels: timestamps,
+                                    datasets: [
+                                      { label: 'Raw', data: values, borderColor: 'hsl(var(--primary))', backgroundColor: 'hsla(var(--primary),0.1)', borderWidth: 1, pointRadius: 0 },
+                                      { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
+                                      { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
+                                      { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
+                                      // Peak marker
+                                      peakIndex >= 0 ? { label: 'Peak', data: timestamps.map((_, i) => i === peakIndex ? max : null), borderColor: '#ef4444', backgroundColor: '#ef4444', pointRadius: 6, type: 'scatter', showLine: false } : {},
+                                      // Trough marker
+                                      troughIndex >= 0 ? { label: 'Trough', data: timestamps.map((_, i) => i === troughIndex ? min : null), borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter', showLine: false } : {},
+                                      // Anomalies
+                                      anomalies.length ? { label: 'Anomaly', data: timestamps.map((t, i) => anomalies.find(a => a.x === t) ? values[i] : null), borderColor: '#f59e42', backgroundColor: '#f59e42', pointRadius: 5, type: 'scatter', showLine: false } : {},
+                                    ].filter(Boolean),
+                                  }} />
+                                </div>
+                              </div>
+                              {/* Delta/Change Rate Graph */}
+                              <div className="mb-4">
+                                <span className="font-semibold">Delta/Change Rate:</span>
+                                <div className="h-32 w-full">
+                                  <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
+                                    data={{ labels: timestamps, datasets: [{ label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0 }] }} />
+                                </div>
+                              </div>
+                              {/* Uptime Graph */}
+                              <div className="mb-4">
+                                <span className="font-semibold">Uptime (binary, per minute):</span>
+                                <div className="h-20 w-full">
+                                  <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } }, scales: { ...chartOptions.scales, y: { min: 0, max: 1, ticks: { stepSize: 1 } } } }}
+                                    data={{ labels: timestamps, datasets: [{ label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0 }] }} />
+                                </div>
+                              </div>
+                              {/* Hourly Bar Chart */}
+                              <div className="mb-4">
+                                <span className="font-semibold">Hourly Averages:</span>
+                                <div className="h-32 w-full">
+                                  <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
+                                    data={{ labels: hourly.map(h => h.hour), datasets: [{ label: 'Hourly Avg', data: hourly.map(h => h.avg), backgroundColor: '#818cf8', borderColor: '#6366f1', borderWidth: 2, type: 'bar' }] }} />
+                                </div>
+                              </div>
+                              {/* Time-based Metrics */}
+                              <div className="mb-4">
+                                <span className="font-semibold">Time-based Metrics:</span>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  <div>Duration Active: {timestamps.length ? `${((new Date(timestamps[timestamps.length - 1]).getTime() - new Date(timestamps[0]).getTime()) / 1000).toFixed(0)}s` : '--'}</div>
+                                  <div>Time in Range: --</div>
+                                  <div>Time Above/Below Threshold: --</div>
+                                  <div>% Uptime: {uptime.length ? `${(uptime.filter(x => x === 1).length / uptime.length * 100).toFixed(1)}%` : '--'}</div>
+                                </div>
+                              </div>
+                            </CardContent>
+                          )}
+                        </Card>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              </ShadAccordionContent>
+            </ShadAccordionItem>
+          </ShadAccordion>
         )}
       </div>
     </div>
