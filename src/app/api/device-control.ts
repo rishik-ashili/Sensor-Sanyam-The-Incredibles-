@@ -16,12 +16,16 @@ function getClient() {
 export async function POST(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const device = searchParams.get('device');
-    const enabled = searchParams.get('enabled') === 'true';
+    const enabledParam = searchParams.get('enabled');
+    const scaleParam = searchParams.get('scale');
     if (!device) {
         return NextResponse.json({ error: 'Missing device parameter' }, { status: 400 });
     }
     const topic = `${BASE_TOPIC}/${device}/control`;
-    const payload = JSON.stringify({ enabled });
+    const payloadObj: any = {};
+    if (enabledParam !== null) payloadObj.enabled = enabledParam === 'true';
+    if (scaleParam !== null) payloadObj.scale = parseFloat(scaleParam);
+    const payload = JSON.stringify(payloadObj);
     try {
         await new Promise<void>((resolve, reject) => {
             getClient().publish(topic, payload, {}, (err) => {

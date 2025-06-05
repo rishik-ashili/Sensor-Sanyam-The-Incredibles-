@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Accordion as ShadAccordion, AccordionItem as ShadAccordionItem, AccordionTrigger as ShadAccordionTrigger, AccordionContent as ShadAccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from '@/components/ui/switch';
+import { Slider } from '@/components/ui/slider';
 
 ChartJS.register(
   CategoryScale,
@@ -296,6 +297,8 @@ export default function DashboardPage() {
   const toastIdsRef = useRef<{ [topic: string]: string }>({});
   const [theme, setTheme] = useState<'normal' | 'dark' | 'blue'>('normal');
   const [deviceEnabled, setDeviceEnabled] = useState<{ [device: string]: boolean }>({ rpi1: true, rpi2: true });
+  const [deviceScale, setDeviceScale] = useState<{ [device: string]: number }>({ rpi1: 1.0, rpi2: 1.0 });
+  const scaleTimeouts = useRef<{ [device: string]: NodeJS.Timeout | null }>({ rpi1: null, rpi2: null });
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -747,6 +750,15 @@ export default function DashboardPage() {
     await fetch(`/api/device-control?device=${device}&enabled=${enabled ? 'true' : 'false'}`, { method: 'POST' });
   };
 
+  // Function to send scale control message (debounced)
+  const setDeviceScaleDebounced = (device: string, scale: number) => {
+    setDeviceScale(prev => ({ ...prev, [device]: scale }));
+    if (scaleTimeouts.current[device]) clearTimeout(scaleTimeouts.current[device]!);
+    scaleTimeouts.current[device] = setTimeout(() => {
+      fetch(`/api/device-control?device=${device}&scale=${scale}`, { method: 'POST' });
+    }, 500);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Loading Overlay */}
@@ -1026,6 +1038,22 @@ export default function DashboardPage() {
                   <CardDescription>Compare current sensor values to their thresholds in real time.</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div className="mb-4 flex flex-wrap gap-6 items-center">
+                    {['rpi1', 'rpi2'].map(device => (
+                      <div key={device} className="flex flex-col items-center min-w-[200px]">
+                        <span className="mb-1 font-semibold text-sm text-primary">{device} Value Scale</span>
+                        <Slider
+                          min={0.1}
+                          max={2.0}
+                          step={0.01}
+                          value={[deviceScale[device] ?? 1.0]}
+                          onValueChange={([val]) => setDeviceScaleDebounced(device, val)}
+                          className="w-40"
+                        />
+                        <span className="mt-1 text-xs text-muted-foreground">{(deviceScale[device] ?? 1.0).toFixed(2)}x</span>
+                      </div>
+                    ))}
+                  </div>
                   <ThresholdDashboard sensors={filteredSensors} />
                 </CardContent>
               </Card>

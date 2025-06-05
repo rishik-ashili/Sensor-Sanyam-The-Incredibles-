@@ -12,19 +12,23 @@ BASE_TOPIC = "sensorflow/demo"
 # Create MQTT client
 client = mqtt.Client()
 
-# Add global enabled flag
+# Add global enabled flag and scale
 enabled = True
+scale = 1.0
 
 def on_connect(client, userdata, flags, rc):
     print(f"Connected with result code {rc}")
 
 def on_control(client, userdata, msg):
-    global enabled
+    global enabled, scale
     try:
         payload = json.loads(msg.payload.decode())
         if 'enabled' in payload:
             enabled = bool(payload['enabled'])
             print(f"[CONTROL] Publishing {'enabled' if enabled else 'disabled'} via control topic.")
+        if 'scale' in payload:
+            scale = float(payload['scale'])
+            print(f"[CONTROL] Scale set to {scale}")
     except Exception as e:
         print(f"[CONTROL] Error parsing control message: {e}")
 
@@ -105,19 +109,19 @@ try:
                 # Update sensor value
                 delta = random.uniform(-0.5, 0.5)
                 current_values[i] = min(max(current_values[i] + delta, sensor["min"]), sensor["max"])
-                value = current_values[i]
+                value = current_values[i] * scale
                 payload = {
                     "value": round(value, 2),
                     "timestamp": datetime.utcnow().isoformat(),
                     "unit": sensor["unit"],
                     "device": "rpi1",
                     "coordinates": {"lat": 12.9716, "lon": 77.5946},
-                    "threshold": sensor["threshold"]  # Add threshold to payload
+                    "threshold": sensor["threshold"]
                 }
                 topic = f"{BASE_TOPIC}/{sensor['name']}"
                 client.publish(topic, json.dumps(payload))
                 # Update and publish per-sensor energy value
-                energy_values[i] += random.uniform(0.1, 1.0)
+                energy_values[i] += random.uniform(0.1, 1.0) * scale
                 energy_payload = {
                     "value": round(energy_values[i], 2),
                     "timestamp": datetime.utcnow().isoformat(),
