@@ -1311,7 +1311,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Floating Download Report Button - move above theme toggle */}
-      <div className="fixed bottom-44 right-6 z-50">
+      <div className="fixed bottom-44 right-6 z-50 flex flex-col items-end gap-2">
         <Button
           className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2 bg-primary text-primary-foreground"
           onClick={() => setReportModalOpen(true)}
@@ -1319,6 +1319,57 @@ export default function DashboardPage() {
           <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
           Download Report
         </Button>
+        {/* Floating Theme Toggle */}
+        <div className="bg-card shadow-lg rounded-full flex items-center px-2 py-1 border border-border mb-2 mt-4">
+          <Button
+            size="icon"
+            variant={theme === 'normal' ? 'default' : 'ghost'}
+            className={`rounded-full ${theme === 'normal' ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setTheme('normal')}
+            aria-label="Normal Mode"
+          >
+            <Sun className="h-5 w-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant={theme === 'dark' ? 'default' : 'ghost'}
+            className={`rounded-full ml-1 ${theme === 'dark' ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setTheme('dark')}
+            aria-label="Dark Mode"
+          >
+            <Moon className="h-5 w-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant={theme === 'blue' ? 'default' : 'ghost'}
+            className={`rounded-full ml-1 ${theme === 'blue' ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setTheme('blue')}
+            aria-label="Blue Mode"
+          >
+            <Palette className="h-5 w-5" />
+          </Button>
+        </div>
+        {/* Existing Notification Toggle */}
+        <div>
+          <Button
+            variant={notificationsOn ? "default" : "outline"}
+            className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2"
+            onClick={() => {
+              const next = !notificationsOn;
+              setNotificationsOn(next);
+              toast({
+                title: next ? "Notifications On" : "Notifications Off",
+                description: next
+                  ? "Notifications are turned on."
+                  : "Notifications are off.",
+                duration: 500, // Auto-dismiss after 2 seconds
+              });
+            }}
+          >
+            {notificationsOn ? <Bell className="mr-2" /> : <BellOff className="mr-2" />}
+            {notificationsOn ? "Notifications On" : "Notifications Off"}
+          </Button>
+        </div>
       </div>
       {/* Download Report Modal */}
       <Dialog open={reportModalOpen} onOpenChange={setReportModalOpen}>
@@ -1413,10 +1464,9 @@ export default function DashboardPage() {
                   socketRef.current?.off('sensor_data', handler);
                   setReportBuffer(buffer);
                   // --- PDF GENERATION LOGIC ---
-                  // 1. Create a new jsPDF instance
+                  // Use the dashboard's current chart data for the PDF graphs
                   const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
                   let y = 40;
-                  // 2. Add summary/threshold/device info if selected
                   if (reportIncludeSummary) {
                     doc.setFontSize(18);
                     doc.text('SensorFlow Analytics Report', 40, y);
@@ -1448,7 +1498,7 @@ export default function DashboardPage() {
                     });
                   }
                   y += 10;
-                  // 3. For each selected sensor and graph, render chart offscreen, capture as image, and add to PDF
+                  // For each selected sensor and graph, use the dashboard's current chart data
                   for (const topic of reportSensors) {
                     const sensor = filteredSensors[topic];
                     if (!sensor) continue;
@@ -1457,10 +1507,8 @@ export default function DashboardPage() {
                     doc.setFontSize(14);
                     doc.text(`${sensor.displayName} (${sensor.unit})`, 40, y);
                     y += 20;
-                    // For each selected graph type
                     for (const graphKey of reportGraphs) {
-                      // Prepare a hidden canvas/chart for this graph
-                      // We'll use a temporary DOM node
+                      // Prepare a hidden canvas/chart for this graph using the dashboard's current data
                       const tempDiv = document.createElement('div');
                       tempDiv.style.position = 'fixed';
                       tempDiv.style.left = '-9999px';
@@ -1468,17 +1516,16 @@ export default function DashboardPage() {
                       tempDiv.style.width = '600px';
                       tempDiv.style.height = '300px';
                       document.body.appendChild(tempDiv);
-                      // Prepare data for the graph
-                      const history = (reportBuffer[topic] || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                      // Use the dashboard's current data for this sensor
+                      const dashboardSensor = filteredSensors[topic];
+                      const history = (dashboardSensor?.history || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                       const values = history.map(p => p.value);
                       const timestamps = history.map(p => p.timestamp);
-                      // Prepare chart config based on graphKey
                       let chartData: any = {};
                       let chartOptions: any = { responsive: false, animation: false, plugins: { legend: { display: true } } };
                       let chartTitle = '';
                       if (graphKey === 'rolling') {
                         chartTitle = 'Rolling Averages';
-                        // ...rolling averages logic...
                         function rollingAvg(arr: number[], window: number) {
                           if (arr.length < window) return [];
                           return arr.map((_, i) => {
@@ -1577,7 +1624,6 @@ export default function DashboardPage() {
                       document.body.removeChild(tempDiv);
                     }
                   }
-                  // 4. Save/download the PDF
                   doc.save('sensorflow_report.pdf');
                   setReportLoading(false);
                   setReportModalOpen(false);
