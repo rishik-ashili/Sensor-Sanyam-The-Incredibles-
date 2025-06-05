@@ -429,57 +429,37 @@ export default function DashboardPage() {
       });
     });
 
-    newSocket.on('sensorData', (data: SensorDataEvent) => {
-      try {
-        // Skip processing control messages
-        if (data.topic.endsWith('/control')) {
-          return;
+    newSocket.on('sensor_data', (data: SensorDataEvent) => {
+      setLastSensorError(null);
+      setSensors((prevSensors: SensorsState) => {
+        const existingSensor = prevSensors[data.topic];
+        let unit = data.payload.unit || existingSensor?.unit || 'N/A';
+        if (unit === 'N/A') {
+          if (data.topic.toLowerCase().includes('temperature')) unit = '°C';
+          else if (data.topic.toLowerCase().includes('humidity')) unit = '%';
+          else if (data.topic.toLowerCase().includes('pressure')) unit = 'hPa';
         }
-
-        const { value, timestamp, unit, device, coordinates, threshold } = data.payload;
-        if (typeof value !== 'number' || isNaN(value)) {
-          throw new Error('Invalid value (not parseable to number).');
-        }
-
-        setLastSensorError(null);
-        setSensors((prevSensors: SensorsState) => {
-          const existingSensor = prevSensors[data.topic];
-          let updatedUnit = unit || existingSensor?.unit || 'N/A';
-          if (updatedUnit === 'N/A') {
-            if (data.topic.toLowerCase().includes('temperature')) updatedUnit = '°C';
-            else if (data.topic.toLowerCase().includes('humidity')) updatedUnit = '%';
-            else if (data.topic.toLowerCase().includes('pressure')) updatedUnit = 'hPa';
-          }
-          const newHistoryEntry: HistoryPoint = { value: value, timestamp: timestamp };
-          const updatedHistory = existingSensor
-            ? [...existingSensor.history, newHistoryEntry]
-            : [newHistoryEntry];
-          const trimmedHistory = updatedHistory.slice(-MAX_HISTORY_POINTS_CLIENT);
-
-          return {
-            ...prevSensors,
-            [data.topic]: {
-              ...existingSensor,
-              latestValue: value,
-              unit: updatedUnit,
-              history: trimmedHistory,
-              topic: data.topic,
-              displayName: existingSensor?.displayName || formatTopicName(data.topic),
-              lastUpdateTimestamp: timestamp,
-              device: device || existingSensor?.device || 'Unknown',
-              coordinates: coordinates || existingSensor?.coordinates,
-              threshold: threshold || existingSensor?.threshold,
-            },
-          };
-        });
-      } catch (error) {
-        console.error('[DashboardPage] Error processing sensor data:', error);
-        setLastSensorError({
-          topic: data.topic,
-          rawMessage: JSON.stringify(data.payload),
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-      }
+        const newHistoryEntry: HistoryPoint = { value: data.payload.value, timestamp: data.payload.timestamp };
+        const updatedHistory = existingSensor
+          ? [...existingSensor.history, newHistoryEntry]
+          : [newHistoryEntry];
+        const trimmedHistory = updatedHistory.slice(-MAX_HISTORY_POINTS_CLIENT);
+        return {
+          ...prevSensors,
+          [data.topic]: {
+            ...existingSensor,
+            latestValue: data.payload.value,
+            unit: unit,
+            history: trimmedHistory,
+            topic: data.topic,
+            displayName: existingSensor?.displayName || formatTopicName(data.topic),
+            lastUpdateTimestamp: data.payload.timestamp,
+            device: (data.payload as any).device || existingSensor?.device || 'Unknown',
+            coordinates: (data.payload as any).coordinates || existingSensor?.coordinates,
+            threshold: (data.payload as any).threshold || existingSensor?.threshold,
+          },
+        };
+      });
     });
 
     newSocket.on('sensor_data_error', (data: SensorErrorData) => {
