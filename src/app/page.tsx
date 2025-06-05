@@ -5,7 +5,7 @@ import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle, Bell, BellOff } from 'lucide-react';
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle, Bell, BellOff, Sun, Moon, Palette } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -293,6 +293,7 @@ export default function DashboardPage() {
   const [loadingPeriod, setLoadingPeriod] = useState(true); // true for first 15s
   // Track toast ids for each topic
   const toastIdsRef = useRef<{ [topic: string]: string }>({});
+  const [theme, setTheme] = useState<'normal' | 'dark' | 'blue'>('normal');
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -551,6 +552,16 @@ export default function DashboardPage() {
       }
     });
   }, [notificationsOn, sensors, loadingPeriod, toast, dismiss]);
+
+  // Theme effect: set class on <html>
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const html = document.documentElement;
+      html.classList.remove('dark', 'blue');
+      if (theme === 'dark') html.classList.add('dark');
+      if (theme === 'blue') html.classList.add('blue');
+    }
+  }, [theme]);
 
   const getMqttStatusDisplay = () => {
     if (isSocketConnecting && !socket?.connected) {
@@ -1177,26 +1188,60 @@ export default function DashboardPage() {
         </ShadAccordion>
       </div>
 
-      <div className="fixed bottom-6 right-6 z-50">
-        <Button
-          variant={notificationsOn ? "default" : "outline"}
-          className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2"
-          onClick={() => {
-            setNotificationsOn((prev) => {
-              const next = !prev;
-              toast({
-                title: next ? "Notifications On" : "Notifications Off",
-                description: next
-                  ? "Notifications are turned on."
-                  : "Notifications are off.",
+      {/* Floating Theme Toggle */}
+      <div className="fixed bottom-24 right-6 z-50 flex flex-col items-end gap-2">
+        <div className="bg-card shadow-lg rounded-full flex items-center px-2 py-1 border border-border mb-2">
+          <Button
+            size="icon"
+            variant={theme === 'normal' ? 'default' : 'ghost'}
+            className={`rounded-full ${theme === 'normal' ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setTheme('normal')}
+            aria-label="Normal Mode"
+          >
+            <Sun className="h-5 w-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant={theme === 'dark' ? 'default' : 'ghost'}
+            className={`rounded-full ml-1 ${theme === 'dark' ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setTheme('dark')}
+            aria-label="Dark Mode"
+          >
+            <Moon className="h-5 w-5" />
+          </Button>
+          <Button
+            size="icon"
+            variant={theme === 'blue' ? 'default' : 'ghost'}
+            className={`rounded-full ml-1 ${theme === 'blue' ? 'ring-2 ring-primary' : ''}`}
+            onClick={() => setTheme('blue')}
+            aria-label="Blue Mode"
+          >
+            <Palette className="h-5 w-5" />
+          </Button>
+        </div>
+
+        {/* Existing Notification Toggle */}
+        <div>
+          <Button
+            variant={notificationsOn ? "default" : "outline"}
+            className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2"
+            onClick={() => {
+              setNotificationsOn((prev) => {
+                const next = !prev;
+                toast({
+                  title: next ? "Notifications On" : "Notifications Off",
+                  description: next
+                    ? "Notifications are turned on."
+                    : "Notifications are off.",
+                });
+                return next;
               });
-              return next;
-            });
-          }}
-        >
-          {notificationsOn ? <Bell className="mr-2" /> : <BellOff className="mr-2" />}
-          {notificationsOn ? "Notifications On" : "Notifications Off"}
-        </Button>
+            }}
+          >
+            {notificationsOn ? <Bell className="mr-2" /> : <BellOff className="mr-2" />}
+            {notificationsOn ? "Notifications On" : "Notifications Off"}
+          </Button>
+        </div>
       </div>
     </div>
   );
