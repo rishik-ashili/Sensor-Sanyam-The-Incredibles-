@@ -30,6 +30,8 @@ import { Accordion as ShadAccordion, AccordionItem as ShadAccordionItem, Accordi
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
 ChartJS.register(
   CategoryScale,
@@ -785,6 +787,27 @@ export default function DashboardPage() {
   ];
   const [selectedGraphTab, setSelectedGraphTab] = useState<{ [topic: string]: string }>({});
 
+  // Download Report Modal State
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reportSensors, setReportSensors] = useState<string[]>([]); // topic names
+  const [reportGraphs, setReportGraphs] = useState<string[]>(['rolling']);
+  const [reportIncludeSummary, setReportIncludeSummary] = useState(true);
+  const [reportIncludeThreshold, setReportIncludeThreshold] = useState(true);
+  const [reportIncludeDeviceInfo, setReportIncludeDeviceInfo] = useState(true);
+  const [reportDuration, setReportDuration] = useState(10); // seconds
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportBuffer, setReportBuffer] = useState<{ [topic: string]: HistoryPoint[] }>({});
+
+  // Helper: all available sensor topics (non-energy)
+  const allSensorTopics = useMemo(() => Object.values(filteredSensors).filter(s => !isEnergySensor(s)).map(s => s.topic), [filteredSensors]);
+  // Helper: all graph types
+  const allGraphTypes = [
+    { key: 'rolling', label: 'Rolling Averages' },
+    { key: 'delta', label: 'Delta/Change' },
+    { key: 'uptime', label: 'Uptime' },
+    { key: 'hourly', label: 'Hourly Avg' },
+  ];
+
   return (
     <div className="min-h-screen bg-background">
       {/* Loading Overlay */}
@@ -1340,6 +1363,119 @@ export default function DashboardPage() {
           </Button>
         </div>
       </div>
+
+      {/* Floating Download Report Button */}
+      <div className="fixed bottom-40 right-6 z-50">
+        <Button
+          className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2 bg-primary text-primary-foreground"
+          onClick={() => setReportModalOpen(true)}
+        >
+          <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+          Download Report
+        </Button>
+      </div>
+      {/* Download Report Modal */}
+      <Dialog open={reportModalOpen} onOpenChange={setReportModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogTitle>Download Analytics Report</DialogTitle>
+          <div className="space-y-4 mt-2">
+            <div>
+              <div className="font-semibold mb-1">Select Parameters</div>
+              <div className="flex flex-wrap gap-2">
+                <label>
+                  <input type="checkbox" checked={reportSensors.length === allSensorTopics.length}
+                    onChange={e => setReportSensors(e.target.checked ? allSensorTopics : [])} />
+                  <span className="ml-1">All</span>
+                </label>
+                {allSensorTopics.map(topic => (
+                  <label key={topic} className="flex items-center">
+                    <input type="checkbox" checked={reportSensors.includes(topic)}
+                      onChange={e => setReportSensors(prev => e.target.checked ? [...prev, topic] : prev.filter(t => t !== topic))} />
+                    <span className="ml-1">{formatTopicName(topic)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold mb-1">Select Graphs</div>
+              <div className="flex flex-wrap gap-2">
+                <label>
+                  <input type="checkbox" checked={reportGraphs.length === allGraphTypes.length}
+                    onChange={e => setReportGraphs(e.target.checked ? allGraphTypes.map(g => g.key) : [])} />
+                  <span className="ml-1">All</span>
+                </label>
+                {allGraphTypes.map(g => (
+                  <label key={g.key} className="flex items-center">
+                    <input type="checkbox" checked={reportGraphs.includes(g.key)}
+                      onChange={e => setReportGraphs(prev => e.target.checked ? [...prev, g.key] : prev.filter(k => k !== g.key))} />
+                    <span className="ml-1">{g.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <label className="flex items-center">
+                <input type="checkbox" checked={reportIncludeSummary} onChange={e => setReportIncludeSummary(e.target.checked)} />
+                <span className="ml-1">Include Summary</span>
+              </label>
+              <label className="flex items-center">
+                <input type="checkbox" checked={reportIncludeThreshold} onChange={e => setReportIncludeThreshold(e.target.checked)} />
+                <span className="ml-1">Include Thresholds</span>
+              </label>
+              <label className="flex items-center">
+                <input type="checkbox" checked={reportIncludeDeviceInfo} onChange={e => setReportIncludeDeviceInfo(e.target.checked)} />
+                <span className="ml-1">Include Device Info</span>
+              </label>
+            </div>
+            <div>
+              <div className="font-semibold mb-1">Select Duration</div>
+              <div className="flex gap-2">
+                {[10, 15, 30].map(sec => (
+                  <button key={sec} type="button"
+                    className={`px-3 py-1 rounded border ${reportDuration === sec ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border'}`}
+                    onClick={() => setReportDuration(sec)}>{sec}s</button>
+                ))}
+                <input type="number" min={1} max={120} value={reportDuration} onChange={e => setReportDuration(Number(e.target.value))}
+                  className="w-16 px-2 py-1 border rounded ml-2" />
+                <span className="ml-1">seconds</span>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button
+                disabled={reportLoading || reportSensors.length === 0 || reportGraphs.length === 0}
+                onClick={async () => {
+                  setReportLoading(true);
+                  setReportBuffer({});
+                  // Start buffering for the selected duration
+                  const buffer: { [topic: string]: HistoryPoint[] } = {};
+                  const start = Date.now();
+                  const end = start + reportDuration * 1000;
+                  function onData(topic: string, payload: HistoryPoint) {
+                    if (!reportSensors.includes(topic)) return;
+                    buffer[topic] = buffer[topic] || [];
+                    buffer[topic].push(payload);
+                  }
+                  // Attach a temporary listener to buffer data
+                  const handler = (data: any) => {
+                    if (data && data.topic && data.payload) {
+                      onData(data.topic, { value: data.payload.value, timestamp: data.payload.timestamp });
+                    }
+                  };
+                  socketRef.current?.on('sensor_data', handler);
+                  // Wait for the duration
+                  await new Promise(res => setTimeout(res, reportDuration * 1000));
+                  socketRef.current?.off('sensor_data', handler);
+                  setReportBuffer(buffer);
+                  setReportLoading(false);
+                  // TODO: Generate PDF here in next step
+                }}
+              >
+                {reportLoading ? 'Collecting Data...' : 'Download'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
