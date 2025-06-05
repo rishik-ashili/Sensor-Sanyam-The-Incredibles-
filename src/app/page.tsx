@@ -1226,15 +1226,13 @@ export default function DashboardPage() {
             variant={notificationsOn ? "default" : "outline"}
             className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2"
             onClick={() => {
-              setNotificationsOn((prev) => {
-                const next = !prev;
-                toast({
-                  title: next ? "Notifications On" : "Notifications Off",
-                  description: next
-                    ? "Notifications are turned on."
-                    : "Notifications are off.",
-                });
-                return next;
+              const next = !notificationsOn;
+              setNotificationsOn(next);
+              toast({
+                title: next ? "Notifications On" : "Notifications Off",
+                description: next
+                  ? "Notifications are turned on."
+                  : "Notifications are off.",
               });
             }}
           >
