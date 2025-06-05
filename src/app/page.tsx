@@ -777,6 +777,14 @@ export default function DashboardPage() {
     }, 300);
   };
 
+  const graphTabs = [
+    { key: 'rolling', label: 'Rolling Averages' },
+    { key: 'delta', label: 'Delta/Change' },
+    { key: 'uptime', label: 'Uptime' },
+    { key: 'hourly', label: 'Hourly Avg' },
+  ];
+  const [selectedGraphTab, setSelectedGraphTab] = useState<{ [topic: string]: string }>({});
+
   return (
     <div className="min-h-screen bg-background">
       {/* Loading Overlay */}
@@ -955,6 +963,7 @@ export default function DashboardPage() {
                         if (sensor.topic.toLowerCase().includes('temperature')) IconComponent = Thermometer;
                         if (sensor.topic.toLowerCase().includes('humidity')) IconComponent = Droplets;
                         const grid = (layoutByDevice[device] || []).find(l => l.i === sensor.topic) || { i: sensor.topic, x: 0, y: 0, w: 2, h: 4 };
+                        const tab = selectedGraphTab[sensor.topic] || 'rolling';
                         return (
                           <div key={sensor.topic} data-grid={grid}>
                             <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative">
@@ -1156,6 +1165,7 @@ export default function DashboardPage() {
                     const peakIndex = values.length ? values.indexOf(max) : -1;
                     const troughIndex = values.length ? values.indexOf(min) : -1;
                     const minimized = minimizedAnalytics[sensor.topic] || false;
+                    const tab = selectedGraphTab[sensor.topic] || 'rolling';
                     return (
                       <Card key={sensor.topic} className="border border-border">
                         <CardHeader>
@@ -1188,55 +1198,73 @@ export default function DashboardPage() {
                               <div><span className="font-semibold">Median:</span> {median !== null ? median.toFixed(2) : '--'}</div>
                               <div><span className="font-semibold">Std Dev:</span> {stddev !== null ? stddev.toFixed(2) : '--'}</div>
                             </div>
-                            {/* Rolling averages with peak/trough/anomaly markers */}
-                            <div className="mb-4">
-                              <span className="font-semibold">Rolling Averages (3s/5s/10s) with Markers:</span>
-                              <div className="h-48 w-full">
-                                <Line options={{
-                                  ...chartOptions,
-                                  plugins: { ...chartOptions.plugins, legend: { display: true } },
-                                  scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'time' } },
-                                }} data={{
-                                  labels: timestamps,
-                                  datasets: [
-                                    { label: 'Raw', data: values, borderColor: 'hsl(var(--primary))', backgroundColor: 'hsla(var(--primary),0.1)', borderWidth: 1, pointRadius: 0 },
-                                    { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
-                                    { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
-                                    { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
-                                    // Peak marker
-                                    peakIndex >= 0 ? { label: 'Peak', data: timestamps.map((_, i) => i === peakIndex ? max : null), borderColor: '#ef4444', backgroundColor: '#ef4444', pointRadius: 6, type: 'scatter', showLine: false } : {},
-                                    // Trough marker
-                                    troughIndex >= 0 ? { label: 'Trough', data: timestamps.map((_, i) => i === troughIndex ? min : null), borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter', showLine: false } : {},
-                                    // Anomalies
-                                    anomalies.length ? { label: 'Anomaly', data: timestamps.map((t, i) => anomalies.find(a => a.x === t) ? values[i] : null), borderColor: '#f59e42', backgroundColor: '#f59e42', pointRadius: 5, type: 'scatter', showLine: false } : {},
-                                  ].filter(Boolean),
-                                }} />
-                              </div>
+                            {/* Graph Tabs */}
+                            <div className="flex gap-2 mb-4">
+                              {graphTabs.map(tabOpt => (
+                                <button
+                                  key={tabOpt.key}
+                                  className={`px-3 py-1 rounded text-sm font-medium border ${tab === tabOpt.key ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border'} transition-colors`}
+                                  onClick={() => setSelectedGraphTab(prev => ({ ...prev, [sensor.topic]: tabOpt.key }))}
+                                  type="button"
+                                >
+                                  {tabOpt.label}
+                                </button>
+                              ))}
                             </div>
-                            {/* Delta/Change Rate Graph */}
-                            <div className="mb-4">
-                              <span className="font-semibold">Delta/Change Rate:</span>
-                              <div className="h-32 w-full">
-                                <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
-                                  data={{ labels: timestamps, datasets: [{ label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0 }] }} />
+                            {/* Only show the selected graph */}
+                            {tab === 'rolling' && (
+                              <div className="mb-4">
+                                <span className="font-semibold">Rolling Averages (3s/5s/10s) with Markers:</span>
+                                <div className="h-48 w-full">
+                                  <Line options={{
+                                    ...chartOptions,
+                                    plugins: { ...chartOptions.plugins, legend: { display: true } },
+                                    scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'time' } },
+                                  }} data={{
+                                    labels: timestamps,
+                                    datasets: [
+                                      { label: 'Raw', data: values, borderColor: 'hsl(var(--primary))', backgroundColor: 'hsla(var(--primary),0.1)', borderWidth: 1, pointRadius: 0 },
+                                      { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
+                                      { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
+                                      { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
+                                      // Peak marker
+                                      peakIndex >= 0 ? { label: 'Peak', data: timestamps.map((_, i) => i === peakIndex ? max : null), borderColor: '#ef4444', backgroundColor: '#ef4444', pointRadius: 6, type: 'scatter', showLine: false } : {},
+                                      // Trough marker
+                                      troughIndex >= 0 ? { label: 'Trough', data: timestamps.map((_, i) => i === troughIndex ? min : null), borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter', showLine: false } : {},
+                                      // Anomalies
+                                      anomalies.length ? { label: 'Anomaly', data: timestamps.map((t, i) => anomalies.find(a => a.x === t) ? values[i] : null), borderColor: '#f59e42', backgroundColor: '#f59e42', pointRadius: 5, type: 'scatter', showLine: false } : {},
+                                    ].filter(Boolean),
+                                  }} />
+                                </div>
                               </div>
-                            </div>
-                            {/* Uptime Graph */}
-                            <div className="mb-4">
-                              <span className="font-semibold">Uptime (binary, per minute):</span>
-                              <div className="h-20 w-full">
-                                <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } }, scales: { ...chartOptions.scales, y: { min: 0, max: 1, ticks: { stepSize: 1 } } } }}
-                                  data={{ labels: timestamps, datasets: [{ label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0 }] }} />
+                            )}
+                            {tab === 'delta' && (
+                              <div className="mb-4">
+                                <span className="font-semibold">Delta/Change Rate:</span>
+                                <div className="h-32 w-full">
+                                  <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
+                                    data={{ labels: timestamps, datasets: [{ label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0 }] }} />
+                                </div>
                               </div>
-                            </div>
-                            {/* Hourly Bar Chart */}
-                            <div className="mb-4">
-                              <span className="font-semibold">Hourly Averages:</span>
-                              <div className="h-32 w-full">
-                                <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
-                                  data={{ labels: hourly.map(h => h.hour), datasets: [{ label: 'Hourly Avg', data: hourly.map(h => h.avg), backgroundColor: '#818cf8', borderColor: '#6366f1', borderWidth: 2, type: 'bar' }] }} />
+                            )}
+                            {tab === 'uptime' && (
+                              <div className="mb-4">
+                                <span className="font-semibold">Uptime (binary, per minute):</span>
+                                <div className="h-20 w-full">
+                                  <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } }, scales: { ...chartOptions.scales, y: { min: 0, max: 1, ticks: { stepSize: 1 } } } }}
+                                    data={{ labels: timestamps, datasets: [{ label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0 }] }} />
+                                </div>
                               </div>
-                            </div>
+                            )}
+                            {tab === 'hourly' && (
+                              <div className="mb-4">
+                                <span className="font-semibold">Hourly Averages:</span>
+                                <div className="h-32 w-full">
+                                  <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
+                                    data={{ labels: hourly.map(h => h.hour), datasets: [{ label: 'Hourly Avg', data: hourly.map(h => h.avg), backgroundColor: '#818cf8', borderColor: '#6366f1', borderWidth: 2, type: 'bar' }] }} />
+                                </div>
+                              </div>
+                            )}
                             {/* Time-based Metrics */}
                             <div className="mb-4">
                               <span className="font-semibold">Time-based Metrics:</span>
