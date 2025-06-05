@@ -768,7 +768,7 @@ export default function DashboardPage() {
           variant: "destructive"
         });
       });
-    }, 500);
+    }, 300);
   };
 
   return (
