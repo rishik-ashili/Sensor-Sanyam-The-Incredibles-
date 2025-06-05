@@ -539,8 +539,10 @@ export default function DashboardPage() {
       toastIdsRef.current = {};
       return;
     }
-    // Notifications ON: show for all above-threshold
+    // Notifications ON: show for all above-threshold, but only for enabled devices
     Object.entries(sensors).forEach(([topic, sensor]) => {
+      const device = sensor.device || 'Unknown';
+      if (deviceEnabled[device] === false) return; // skip disabled devices
       if (sensor.threshold === undefined || sensor.latestValue === null || isEnergySensor(sensor)) return;
       const above = sensor.latestValue > sensor.threshold;
       const existingId = toastIdsRef.current[topic];
@@ -559,14 +561,16 @@ export default function DashboardPage() {
         delete toastIdsRef.current[topic];
       }
     });
-    // Dismiss notifications for topics that no longer exist
+    // Dismiss notifications for topics that no longer exist or are disabled
     Object.keys(toastIdsRef.current).forEach(topic => {
-      if (!sensors[topic] || sensors[topic].threshold === undefined || sensors[topic].latestValue === null || isEnergySensor(sensors[topic])) {
+      const sensor = sensors[topic];
+      const device = sensor?.device || 'Unknown';
+      if (!sensor || deviceEnabled[device] === false || sensor.threshold === undefined || sensor.latestValue === null || isEnergySensor(sensor)) {
         dismiss(toastIdsRef.current[topic]);
         delete toastIdsRef.current[topic];
       }
     });
-  }, [notificationsOn, sensors, loadingPeriod, toast, dismiss]);
+  }, [notificationsOn, sensors, loadingPeriod, toast, dismiss, deviceEnabled]);
 
   // Theme effect: set class on <html>
   useEffect(() => {
@@ -733,8 +737,10 @@ export default function DashboardPage() {
     return Array.from(set);
   }, [savedDevices, liveDeviceNames]);
 
-  // Helper: is device online?
-  const isDeviceOnline = (device: string) => liveDeviceNames.includes(device);
+  // Helper: is device online? (now also checks if enabled)
+  const isDeviceOnline = (device: string) => {
+    return deviceEnabled[device] !== false && liveDeviceNames.includes(device);
+  };
 
   // Helper: get sensors for a device (empty array if offline)
   const getDeviceSensors = (device: string) => (sensorsByDevice[device] || []).filter(s => !isEnergySensor(s));
@@ -1084,7 +1090,7 @@ export default function DashboardPage() {
                   <CardDescription>Statistical insights and advanced analytics for each sensor.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-8">
-                  {allDeviceNames.map(device => {
+                  {allDeviceNames.filter(device => deviceEnabled[device] !== false).map(device => {
                     const { sensorNames, values } = getLatestEnergyPerSensorForDevice(sensors, device);
                     if (!sensorNames.length) return null;
                     return (
@@ -1284,7 +1290,6 @@ export default function DashboardPage() {
             <Palette className="h-5 w-5" />
           </Button>
         </div>
-
         {/* Existing Notification Toggle */}
         <div>
           <Button
@@ -1310,4 +1315,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
