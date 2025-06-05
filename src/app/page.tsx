@@ -169,6 +169,41 @@ function get10sPeak(sensors) {
   });
 }
 
+// Helper to get latest energy value per device
+function getLatestEnergyPerDevice(sensors) {
+  // Find all sensors with topic ending in '/energy'
+  const energySensors = Object.values(sensors).filter(s => s.topic.endsWith('/energy'));
+  // Group by device
+  const byDevice = {};
+  energySensors.forEach(s => {
+    const device = s.device || 'Unknown';
+    if (!byDevice[device] || (s.lastUpdateTimestamp && (!byDevice[device].lastUpdateTimestamp || s.lastUpdateTimestamp > byDevice[device].lastUpdateTimestamp))) {
+      byDevice[device] = s;
+    }
+  });
+  const deviceNames = Object.keys(byDevice);
+  const values = deviceNames.map(d => byDevice[d].latestValue ?? 0);
+  return { deviceNames, values };
+}
+
+// Helper to get latest per-sensor energy values for a device
+function getLatestEnergyPerSensorForDevice(sensors, device) {
+  // Find all sensors for this device with topic ending in '/energy'
+  const energySensors = Object.values(sensors).filter(s => s.device === device && /\/[^/]+\/energy$/.test(s.topic));
+  // Map: sensor name (from topic) => latest value
+  const sensorNames = energySensors.map(s => {
+    const match = s.topic.match(/\/([^/]+)\/energy$/);
+    return match ? match[1] : s.topic;
+  });
+  const values = energySensors.map(s => s.latestValue ?? 0);
+  return { sensorNames, values };
+}
+
+// Helper to check if a sensor is an energy metric
+function isEnergySensor(sensor) {
+  return /\/[^/]+\/energy$/.test(sensor.topic);
+}
+
 export default function DashboardPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
@@ -204,6 +239,19 @@ export default function DashboardPage() {
   });
   const [minimizedAnalytics, setMinimizedAnalytics] = useState<{ [topic: string]: boolean }>({});
   const [forceUpdate, setForceUpdate] = useState(0);
+
+  const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
+  const energyBarData = {
+    labels: deviceNames,
+    datasets: [{
+      label: 'Energy (kWh)',
+      data: energyValues,
+      backgroundColor: 'rgba(59,130,246,0.7)',
+      borderColor: 'rgba(59,130,246,1)',
+      borderWidth: 2,
+      type: 'bar',
+    }],
+  };
 
   useEffect(() => {
     // Initial loading timer
@@ -545,7 +593,7 @@ export default function DashboardPage() {
   const isDeviceOnline = (device: string) => liveDeviceNames.includes(device);
 
   // Helper: get sensors for a device (empty array if offline)
-  const getDeviceSensors = (device: string) => sensorsByDevice[device] || [];
+  const getDeviceSensors = (device: string) => (sensorsByDevice[device] || []).filter(s => !isEnergySensor(s));
 
   useEffect(() => {
     const interval = setInterval(() => setForceUpdate(f => f + 1), 1000);
@@ -793,7 +841,7 @@ export default function DashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
+                  {Object.values(sensors).filter(s => !isEnergySensor(s)).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
                     <TableRow key={sensor.topic}>
                       <TableCell className="font-medium whitespace-nowrap">{sensor.displayName}</TableCell>
                       <TableCell className="text-right">{sensor.latestValue !== null ? sensor.latestValue.toFixed(1) : '--'}</TableCell>
@@ -819,31 +867,36 @@ export default function DashboardPage() {
                     <CardDescription>Statistical insights and advanced analytics for each sensor.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-8">
-                    {/* Bar Plot of 10s Peak Values (All Sensors) */}
-                    <div className="mb-8">
-                      <span className="font-semibold">Bar Plot of 10s Peak Values (All Sensors):</span>
-                      <div className="h-40 w-full">
-                        <Line
-                          options={{
-                            ...chartOptions,
-                            plugins: { ...chartOptions.plugins, legend: { display: false } },
-                            scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'category' } },
-                          }}
-                          data={{
-                            labels: Object.values(sensors).map(s => s.displayName),
-                            datasets: [{
-                              label: '10s Peak Value',
-                              data: get10sPeak(sensors),
-                              backgroundColor: 'rgba(59,130,246,0.7)',
-                              borderColor: 'rgba(59,130,246,1)',
-                              borderWidth: 2,
-                              type: 'bar',
-                            }],
-                          }}
-                        />
-                      </div>
-                    </div>
-                    {Object.values(sensors).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => {
+                    {allDeviceNames.map(device => {
+                      const { sensorNames, values } = getLatestEnergyPerSensorForDevice(sensors, device);
+                      if (!sensorNames.length) return null;
+                      return (
+                        <div key={device} className="mb-8">
+                          <span className="font-semibold">{`Bar Plot of Latest Energy Consumed per Sensor (${device}):`}</span>
+                          <div className="h-40 w-full">
+                            <Line
+                              options={{
+                                ...chartOptions,
+                                plugins: { ...chartOptions.plugins, legend: { display: false } },
+                                scales: { ...chartOptions.scales, x: { ...chartOptions.scales.x, type: 'category' } },
+                              }}
+                              data={{
+                                labels: sensorNames,
+                                datasets: [{
+                                  label: 'Energy (kWh)',
+                                  data: values,
+                                  backgroundColor: 'rgba(59,130,246,0.7)',
+                                  borderColor: 'rgba(59,130,246,1)',
+                                  borderWidth: 2,
+                                  type: 'bar',
+                                }],
+                              }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {Object.values(sensors).filter(s => !isEnergySensor(s)).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => {
                       // Sort history by timestamp
                       const sortedHistory = [...sensor.history].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                       const values = sortedHistory.map(p => p.value);
