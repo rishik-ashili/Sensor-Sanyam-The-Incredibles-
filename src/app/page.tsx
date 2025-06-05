@@ -28,6 +28,7 @@ import 'react-resizable/css/styles.css';
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Accordion as ShadAccordion, AccordionItem as ShadAccordionItem, AccordionTrigger as ShadAccordionTrigger, AccordionContent as ShadAccordionContent } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from '@/components/ui/switch';
 
 ChartJS.register(
   CategoryScale,
@@ -294,6 +295,7 @@ export default function DashboardPage() {
   // Track toast ids for each topic
   const toastIdsRef = useRef<{ [topic: string]: string }>({});
   const [theme, setTheme] = useState<'normal' | 'dark' | 'blue'>('normal');
+  const [deviceEnabled, setDeviceEnabled] = useState<{ [device: string]: boolean }>({ rpi1: true, rpi2: true });
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -729,6 +731,12 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
+  // Function to send control message to backend API
+  const setDevicePublisher = async (device: string, enabled: boolean) => {
+    setDeviceEnabled(prev => ({ ...prev, [device]: enabled }));
+    await fetch(`/api/device-control?device=${device}&enabled=${enabled ? 'true' : 'false'}`, { method: 'POST' });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Loading Overlay */}
@@ -829,6 +837,7 @@ export default function DashboardPage() {
             const coords = getDeviceCoordinates(deviceSensors);
             const online = isDeviceOnline(device);
             const saved = savedDevices.includes(device);
+            const enabled = deviceEnabled[device] !== false;
             return (
               <AccordionItem value={device} key={device}>
                 <AccordionTrigger>
@@ -837,6 +846,12 @@ export default function DashboardPage() {
                     {coords && (
                       <span className="ml-2 text-xs text-muted-foreground">({coords.lat}, {coords.lon})</span>
                     )}
+                    <Switch
+                      checked={enabled}
+                      onCheckedChange={checked => setDevicePublisher(device, checked)}
+                      className="ml-2"
+                      aria-label={`Toggle ${device} publisher`}
+                    />
                     <Button
                       size="sm"
                       variant={saved ? 'default' : 'outline'}
@@ -867,7 +882,7 @@ export default function DashboardPage() {
                   </span>
                 </AccordionTrigger>
                 <AccordionContent>
-                  {online ? (
+                  {enabled && online ? (
                     <ResponsiveGridLayout
                       className="layout"
                       layouts={{ lg: getGridLayout(device, deviceSensors) }}
@@ -945,7 +960,7 @@ export default function DashboardPage() {
                       })}
                     </ResponsiveGridLayout>
                   ) : (
-                    <div className="p-8 text-center text-muted-foreground">No data received. Device is offline.</div>
+                    <div className="p-8 text-center text-muted-foreground">Device is disabled or offline.</div>
                   )}
                 </AccordionContent>
               </AccordionItem>
