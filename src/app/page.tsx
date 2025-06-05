@@ -85,6 +85,7 @@ interface SensorDisplayData {
   lastUpdateTimestamp: string | null; // Store raw ISO string
   device?: string;
   coordinates?: { lat: number; lon: number };
+  threshold?: number;  // Add threshold to interface
 }
 
 interface SensorsState {
@@ -194,6 +195,60 @@ function getLatestEnergyPerSensorForDevice(sensors, device) {
 function isEnergySensor(sensor) {
   return /\/[^/]+\/energy$/.test(sensor.topic);
 }
+
+const ThresholdDashboard = ({ sensors }: { sensors: SensorsState }) => {
+  const thresholdData = Object.values(sensors).filter(s => s.threshold !== undefined && !isEnergySensor(s));
+
+  return (
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <AlertTriangle className="h-5 w-5" />
+          Threshold Monitoring
+        </CardTitle>
+        <CardDescription>Current values vs thresholds</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {thresholdData.map((sensor) => (
+            <Card key={sensor.topic} className="relative overflow-hidden">
+              <CardContent className="p-4">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <p className="text-sm font-medium">{sensor.displayName}</p>
+                    <p className="text-xs text-muted-foreground">{sensor.device}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium">
+                      {sensor.latestValue?.toFixed(2)} {sensor.unit}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Threshold: {sensor.threshold} {sensor.unit}
+                    </p>
+                  </div>
+                </div>
+                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-500 ${sensor.latestValue && sensor.threshold && sensor.latestValue > sensor.threshold
+                      ? 'bg-red-500'
+                      : 'bg-green-500'
+                      }`}
+                    style={{
+                      width: `${Math.min(
+                        ((sensor.latestValue || 0) / (sensor.threshold || 1)) * 100,
+                        100
+                      )}%`
+                    }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
 
 export default function DashboardPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -333,7 +388,7 @@ export default function DashboardPage() {
         const latestPoint = data.history.length > 0 ? data.history[data.history.length - 1] : null;
         const device = data.history.length > 0 && (data.history[data.history.length - 1] as any).device;
         const coordinates = data.history.length > 0 && (data.history[data.history.length - 1] as any).coordinates;
-        // Merge, don't overwrite, and always create a tile for every topic
+        const threshold = data.history.length > 0 && (data.history[data.history.length - 1] as any).threshold;
         return {
           ...prevSensors,
           [data.topic]: {
@@ -346,6 +401,7 @@ export default function DashboardPage() {
             lastUpdateTimestamp: latestPoint ? latestPoint.timestamp : null,
             device: device || prevSensors[data.topic]?.device || 'Unknown',
             coordinates: coordinates || prevSensors[data.topic]?.coordinates,
+            threshold: threshold || prevSensors[data.topic]?.threshold,
           },
         };
       });
@@ -378,6 +434,7 @@ export default function DashboardPage() {
             lastUpdateTimestamp: data.payload.timestamp,
             device: (data.payload as any).device || existingSensor?.device || 'Unknown',
             coordinates: (data.payload as any).coordinates || existingSensor?.coordinates,
+            threshold: (data.payload as any).threshold || existingSensor?.threshold,
           },
         };
       });
@@ -835,7 +892,8 @@ export default function DashboardPage() {
           })}
         </Accordion>
 
-        <ShadAccordion type="single" collapsible value={summaryOpen ? "summary" : undefined} onValueChange={v => setSummaryOpen(v === "summary")}>
+        {/* Sensor Summary Section */}
+        <ShadAccordion type="single" collapsible="true" value={summaryOpen ? "summary" : undefined} onValueChange={v => setSummaryOpen(v === "summary")}>
           <ShadAccordionItem value="summary">
             <ShadAccordionTrigger className="text-xl font-headline">Sensor Summary</ShadAccordionTrigger>
             <ShadAccordionContent>
@@ -871,6 +929,25 @@ export default function DashboardPage() {
           </ShadAccordionItem>
         </ShadAccordion>
 
+        {/* Threshold Monitoring Section (moved and styled) */}
+        <ShadAccordion type="single" collapsible value={undefined}>
+          <ShadAccordionItem value="thresholds">
+            <ShadAccordionTrigger className="text-xl font-headline">Threshold Monitoring</ShadAccordionTrigger>
+            <ShadAccordionContent>
+              <Card className="shadow-md mt-8 border border-border">
+                <CardHeader>
+                  <CardTitle className="font-headline text-xl">Threshold Monitoring</CardTitle>
+                  <CardDescription>Compare current sensor values to their thresholds in real time.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ThresholdDashboard sensors={sensors} />
+                </CardContent>
+              </Card>
+            </ShadAccordionContent>
+          </ShadAccordionItem>
+        </ShadAccordion>
+
+        {/* Analytics & Insights Section */}
         <ShadAccordion type="single" collapsible value={analyticsOpen ? "analytics" : undefined} onValueChange={v => setAnalyticsOpen(v === "analytics")}>
           <ShadAccordionItem value="analytics">
             <ShadAccordionTrigger className="text-xl font-headline">Analytics & Insights</ShadAccordionTrigger>

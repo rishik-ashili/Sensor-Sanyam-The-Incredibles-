@@ -28,31 +28,36 @@ sensors = [
         "name": "temperature2",  # Different name to distinguish from first publisher
         "min": 15,
         "max": 35,
-        "unit": "°C"
+        "unit": "°C",
+        "threshold": 25  # Threshold value
     },
     {
         "name": "humidity2",
         "min": 30,
         "max": 80,
-        "unit": "%"
+        "unit": "%",
+        "threshold": 55  # Threshold value
     },
     {
         "name": "pressure2",
         "min": 950,
         "max": 1050,
-        "unit": "hPa"
+        "unit": "hPa",
+        "threshold": 1000  # Threshold value
     },
     {
         "name": "light",
         "min": 0,
         "max": 1000,
-        "unit": "lux"
+        "unit": "lux",
+        "threshold": 500  # Threshold value
     },
     {
         "name": "co2",
         "min": 400,
         "max": 2000,
-        "unit": "ppm"
+        "unit": "ppm",
+        "threshold": 1000  # Threshold value
     }
 ]
 
@@ -71,7 +76,8 @@ for _ in range(5):
             "timestamp": datetime.utcnow().isoformat(),
             "unit": sensor["unit"],
             "device": "rpi2",
-            "coordinates": {"lat": 28.7041, "lon": 77.1025}
+            "coordinates": {"lat": 28.7041, "lon": 77.1025},
+            "threshold": sensor["threshold"]  # Add threshold to payload
         }
         topic = f"{BASE_TOPIC}/{sensor['name']}"
         client.publish(topic, json.dumps(payload))
@@ -100,7 +106,8 @@ try:
                 "timestamp": datetime.utcnow().isoformat(),
                 "unit": sensor["unit"],
                 "device": "rpi2",
-                "coordinates": {"lat": 28.7041, "lon": 77.1025}
+                "coordinates": {"lat": 28.7041, "lon": 77.1025},
+                "threshold": sensor["threshold"]  # Add threshold to payload
             }
             topic = f"{BASE_TOPIC}/{sensor['name']}"
             client.publish(topic, json.dumps(payload))
