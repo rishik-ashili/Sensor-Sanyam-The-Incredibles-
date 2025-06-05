@@ -310,6 +310,16 @@ export default function DashboardPage() {
     }],
   };
 
+  // Filtered sensors by enabled devices
+  const filteredSensors = useMemo(() => {
+    return Object.fromEntries(
+      Object.entries(sensors).filter(([_topic, sensor]) => {
+        const device = sensor.device || 'Unknown';
+        return deviceEnabled[device] !== false;
+      })
+    );
+  }, [sensors, deviceEnabled]);
+
   useEffect(() => {
     // Initial loading timer
     const loadingTimer = setTimeout(() => {
@@ -989,7 +999,7 @@ export default function DashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {Object.values(sensors).filter(s => !isEnergySensor(s)).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
+                      {Object.values(filteredSensors).filter(s => !isEnergySensor(s)).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => (
                         <TableRow key={sensor.topic}>
                           <TableCell className="font-medium whitespace-nowrap">{sensor.displayName}</TableCell>
                           <TableCell className="text-right">{sensor.latestValue !== null ? sensor.latestValue.toFixed(1) : '--'}</TableCell>
@@ -1016,7 +1026,7 @@ export default function DashboardPage() {
                   <CardDescription>Compare current sensor values to their thresholds in real time.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ThresholdDashboard sensors={sensors} />
+                  <ThresholdDashboard sensors={filteredSensors} />
                 </CardContent>
               </Card>
             </ShadAccordionContent>
@@ -1063,7 +1073,7 @@ export default function DashboardPage() {
                       </div>
                     );
                   })}
-                  {Object.values(sensors).filter(s => !isEnergySensor(s)).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => {
+                  {Object.values(filteredSensors).filter(s => !isEnergySensor(s)).sort((a, b) => a.displayName.localeCompare(b.displayName)).map((sensor) => {
                     // Sort history by timestamp
                     const sortedHistory = [...sensor.history].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                     const values = sortedHistory.map(p => p.value);
