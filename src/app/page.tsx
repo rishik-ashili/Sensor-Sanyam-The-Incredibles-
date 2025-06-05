@@ -1310,62 +1310,8 @@ export default function DashboardPage() {
         </ShadAccordion>
       </div>
 
-      {/* Floating Theme Toggle */}
-      <div className="fixed bottom-24 right-6 z-50 flex flex-col items-end gap-2">
-        <div className="bg-card shadow-lg rounded-full flex items-center px-2 py-1 border border-border mb-2">
-          <Button
-            size="icon"
-            variant={theme === 'normal' ? 'default' : 'ghost'}
-            className={`rounded-full ${theme === 'normal' ? 'ring-2 ring-primary' : ''}`}
-            onClick={() => setTheme('normal')}
-            aria-label="Normal Mode"
-          >
-            <Sun className="h-5 w-5" />
-          </Button>
-          <Button
-            size="icon"
-            variant={theme === 'dark' ? 'default' : 'ghost'}
-            className={`rounded-full ml-1 ${theme === 'dark' ? 'ring-2 ring-primary' : ''}`}
-            onClick={() => setTheme('dark')}
-            aria-label="Dark Mode"
-          >
-            <Moon className="h-5 w-5" />
-          </Button>
-          <Button
-            size="icon"
-            variant={theme === 'blue' ? 'default' : 'ghost'}
-            className={`rounded-full ml-1 ${theme === 'blue' ? 'ring-2 ring-primary' : ''}`}
-            onClick={() => setTheme('blue')}
-            aria-label="Blue Mode"
-          >
-            <Palette className="h-5 w-5" />
-          </Button>
-        </div>
-        {/* Existing Notification Toggle */}
-        <div>
-          <Button
-            variant={notificationsOn ? "default" : "outline"}
-            className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2"
-            onClick={() => {
-              const next = !notificationsOn;
-              setNotificationsOn(next);
-              toast({
-                title: next ? "Notifications On" : "Notifications Off",
-                description: next
-                  ? "Notifications are turned on."
-                  : "Notifications are off.",
-                duration: 500, // Auto-dismiss after 2 seconds
-              });
-            }}
-          >
-            {notificationsOn ? <Bell className="mr-2" /> : <BellOff className="mr-2" />}
-            {notificationsOn ? "Notifications On" : "Notifications Off"}
-          </Button>
-        </div>
-      </div>
-
-      {/* Floating Download Report Button */}
-      <div className="fixed bottom-40 right-6 z-50">
+      {/* Floating Download Report Button - move above theme toggle */}
+      <div className="fixed bottom-44 right-6 z-50">
         <Button
           className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2 bg-primary text-primary-foreground"
           onClick={() => setReportModalOpen(true)}
@@ -1466,8 +1412,175 @@ export default function DashboardPage() {
                   await new Promise(res => setTimeout(res, reportDuration * 1000));
                   socketRef.current?.off('sensor_data', handler);
                   setReportBuffer(buffer);
+                  // --- PDF GENERATION LOGIC ---
+                  // 1. Create a new jsPDF instance
+                  const doc = new jsPDF({ orientation: 'p', unit: 'pt', format: 'a4' });
+                  let y = 40;
+                  // 2. Add summary/threshold/device info if selected
+                  if (reportIncludeSummary) {
+                    doc.setFontSize(18);
+                    doc.text('SensorFlow Analytics Report', 40, y);
+                    y += 30;
+                    doc.setFontSize(12);
+                    doc.text(`Generated: ${new Date().toLocaleString()}`, 40, y);
+                    y += 20;
+                  }
+                  if (reportIncludeDeviceInfo) {
+                    doc.setFontSize(12);
+                    doc.text('Devices:', 40, y);
+                    y += 18;
+                    allDeviceNames.forEach(device => {
+                      doc.text(`- ${device}`, 60, y);
+                      y += 16;
+                    });
+                  }
+                  if (reportIncludeThreshold) {
+                    y += 10;
+                    doc.setFontSize(12);
+                    doc.text('Thresholds:', 40, y);
+                    y += 18;
+                    reportSensors.forEach(topic => {
+                      const sensor = filteredSensors[topic];
+                      if (sensor && sensor.threshold !== undefined) {
+                        doc.text(`- ${sensor.displayName}: ${sensor.threshold} ${sensor.unit}`, 60, y);
+                        y += 16;
+                      }
+                    });
+                  }
+                  y += 10;
+                  // 3. For each selected sensor and graph, render chart offscreen, capture as image, and add to PDF
+                  for (const topic of reportSensors) {
+                    const sensor = filteredSensors[topic];
+                    if (!sensor) continue;
+                    doc.addPage();
+                    y = 40;
+                    doc.setFontSize(14);
+                    doc.text(`${sensor.displayName} (${sensor.unit})`, 40, y);
+                    y += 20;
+                    // For each selected graph type
+                    for (const graphKey of reportGraphs) {
+                      // Prepare a hidden canvas/chart for this graph
+                      // We'll use a temporary DOM node
+                      const tempDiv = document.createElement('div');
+                      tempDiv.style.position = 'fixed';
+                      tempDiv.style.left = '-9999px';
+                      tempDiv.style.top = '0';
+                      tempDiv.style.width = '600px';
+                      tempDiv.style.height = '300px';
+                      document.body.appendChild(tempDiv);
+                      // Prepare data for the graph
+                      const history = (reportBuffer[topic] || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                      const values = history.map(p => p.value);
+                      const timestamps = history.map(p => p.timestamp);
+                      // Prepare chart config based on graphKey
+                      let chartData: any = {};
+                      let chartOptions: any = { responsive: false, animation: false, plugins: { legend: { display: true } } };
+                      let chartTitle = '';
+                      if (graphKey === 'rolling') {
+                        chartTitle = 'Rolling Averages';
+                        // ...rolling averages logic...
+                        function rollingAvg(arr: number[], window: number) {
+                          if (arr.length < window) return [];
+                          return arr.map((_, i) => {
+                            if (i < window - 1) return null;
+                            const slice = arr.slice(i - window + 1, i + 1);
+                            return slice.reduce((a, b) => a + b, 0) / window;
+                          });
+                        }
+                        const rolling3 = rollingAvg(values, 3);
+                        const rolling5 = rollingAvg(values, 5);
+                        const rolling10 = rollingAvg(values, 10);
+                        chartData = {
+                          labels: timestamps,
+                          datasets: [
+                            { label: 'Raw', data: values, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', borderWidth: 1, pointRadius: 0 },
+                            { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
+                            { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
+                            { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
+                          ].filter(Boolean),
+                        };
+                      } else if (graphKey === 'delta') {
+                        chartTitle = 'Delta/Change Rate';
+                        function getDelta(arr: number[]) {
+                          if (arr.length < 2) return [];
+                          return arr.map((v, i) => (i === 0 ? null : v - arr[i - 1]));
+                        }
+                        const delta = getDelta(values);
+                        chartData = {
+                          labels: timestamps,
+                          datasets: [
+                            { label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0 },
+                          ],
+                        };
+                      } else if (graphKey === 'uptime') {
+                        chartTitle = 'Uptime (binary, per minute)';
+                        function getUptime(timestamps: string[], interval = 1000) {
+                          if (!timestamps.length) return [];
+                          const bins = [];
+                          let last = new Date(timestamps[0]).getTime();
+                          for (let i = 1; i < timestamps.length; i++) {
+                            const t = new Date(timestamps[i]).getTime();
+                            bins.push(t - last < interval * 2 ? 1 : 0);
+                            last = t;
+                          }
+                          return [1, ...bins];
+                        }
+                        const uptime = getUptime(timestamps);
+                        chartData = {
+                          labels: timestamps,
+                          datasets: [
+                            { label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0 },
+                          ],
+                        };
+                        chartOptions.scales = { y: { min: 0, max: 1, ticks: { stepSize: 1 } } };
+                      } else if (graphKey === 'hourly') {
+                        chartTitle = 'Hourly Averages';
+                        function getHourlyAverages(timestamps: string[], values: number[]) {
+                          const byHour: { [hour: string]: number[] } = {};
+                          timestamps.forEach((ts, i) => {
+                            const d = new Date(ts);
+                            const hour = d.getHours();
+                            if (!byHour[hour]) byHour[hour] = [];
+                            byHour[hour].push(values[i]);
+                          });
+                          return Object.keys(byHour).map(h => ({ hour: h, avg: byHour[h].reduce((a, b) => a + b, 0) / byHour[h].length }));
+                        }
+                        const hourly = getHourlyAverages(timestamps, values);
+                        chartData = {
+                          labels: hourly.map(h => h.hour),
+                          datasets: [
+                            { label: 'Hourly Avg', data: hourly.map(h => h.avg), backgroundColor: '#818cf8', borderColor: '#6366f1', borderWidth: 2, type: 'bar' },
+                          ],
+                        };
+                        chartOptions.scales = { x: { type: 'category' } };
+                      }
+                      // Render chart offscreen
+                      const canvas = document.createElement('canvas');
+                      canvas.width = 600;
+                      canvas.height = 300;
+                      tempDiv.appendChild(canvas);
+                      // @ts-ignore
+                      const chart = new ChartJS(canvas.getContext('2d'), {
+                        type: graphKey === 'hourly' ? 'bar' : 'line',
+                        data: chartData,
+                        options: chartOptions,
+                      });
+                      await new Promise(res => setTimeout(res, 500)); // let chart render
+                      // Capture as image
+                      const imgData = await html2canvas(tempDiv, { backgroundColor: '#fff' }).then(canvas => canvas.toDataURL('image/png'));
+                      doc.setFontSize(12);
+                      doc.text(chartTitle, 40, y);
+                      y += 20;
+                      doc.addImage(imgData, 'PNG', 40, y, 500, 250);
+                      y += 270;
+                      chart.destroy();
+                      document.body.removeChild(tempDiv);
+                    }
+                  }
+                  // 4. Save/download the PDF
+                  doc.save('sensorflow_report.pdf');
                   setReportLoading(false);
-                  // TODO: Generate PDF here in next step
+                  setReportModalOpen(false);
                 }}
               >
                 {reportLoading ? 'Collecting Data...' : 'Download'}
