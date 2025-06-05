@@ -290,6 +290,8 @@ export default function DashboardPage() {
   const [openDevices, setOpenDevices] = useState<string[]>([]);
   const { toast } = useToast();
   const [notificationsOn, setNotificationsOn] = useState(true);
+  // Track previous values for threshold crossing detection
+  const prevValuesRef = useRef<{ [topic: string]: { value: number | null, above: boolean | null } }>({});
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -504,6 +506,26 @@ export default function DashboardPage() {
       return updated;
     });
   }, [sensors]);
+
+  // Threshold crossing notification logic inside useEffect for sensors
+  useEffect(() => {
+    if (!notificationsOn) return;
+    Object.entries(sensors).forEach(([topic, sensor]) => {
+      if (sensor.threshold === undefined || sensor.latestValue === null || isEnergySensor(sensor)) return;
+      const prev = prevValuesRef.current[topic] || { value: null, above: null };
+      const above = sensor.latestValue > sensor.threshold;
+      if (prev.value !== null && prev.above !== null && above !== prev.above) {
+        // Threshold crossing detected
+        toast({
+          title: `${sensor.displayName} Threshold ${above ? "Crossed" : "Restored"}`,
+          description: above
+            ? `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`
+            : `${sensor.displayName} is back below threshold. Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
+        });
+      }
+      prevValuesRef.current[topic] = { value: sensor.latestValue, above };
+    });
+  }, [sensors, notificationsOn, toast]);
 
   const getMqttStatusDisplay = () => {
     if (isSocketConnecting && !socket?.connected) {
