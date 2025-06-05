@@ -519,6 +519,8 @@ export default function DashboardPage() {
         toast({
           title: `${sensor.displayName} Threshold Crossed`,
           description: `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
+          variant: 'destructive',
+          duration: 1000000,
         });
         notifiedAboveRef.current[topic] = true;
       }
@@ -539,6 +541,8 @@ export default function DashboardPage() {
           description: above
             ? `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`
             : `${sensor.displayName} is back below threshold. Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
+          variant: above ? 'destructive' : undefined,
+          duration: 1000000,
         });
         notifiedAboveRef.current[topic] = above;
       }
