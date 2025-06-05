@@ -99,15 +99,6 @@ function formatTopicName(topic: string): string {
 
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
-// Debounce helper
-function debounce(fn: (...args: any[]) => void, delay: number) {
-  let timer: NodeJS.Timeout;
-  return (...args: any[]) => {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn(...args), delay);
-  };
-}
-
 // Helper for change rate (delta)
 function getDelta(arr) {
   if (arr.length < 2) return [];
@@ -224,7 +215,6 @@ export default function DashboardPage() {
     return {};
   });
   const socketRef = useRef<ClientSocket | null>(null);
-  const debouncedSetSensors = useRef(debounce((updater) => setSensors(updater), 100)).current;
   const [savedDevices, setSavedDevices] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -362,9 +352,8 @@ export default function DashboardPage() {
     });
 
     newSocket.on('sensor_data', (data: SensorDataEvent) => {
-      // console.log('[DashboardPage] Sensor Data Received:', data);
       setLastSensorError(null);
-      debouncedSetSensors((prevSensors: SensorsState) => {
+      setSensors((prevSensors: SensorsState) => {
         const existingSensor = prevSensors[data.topic];
         let unit = data.payload.unit || existingSensor?.unit || 'N/A';
         if (unit === 'N/A') {
