@@ -1311,7 +1311,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Floating Download Report Button - move above theme toggle */}
-      <div className="fixed bottom-44 right-6 z-50 flex flex-col items-end gap-2">
+      <div className="fixed bottom-10 right-6 z-50 flex flex-col items-end gap-2">
         <Button
           className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2 bg-primary text-primary-foreground"
           onClick={() => setReportModalOpen(true)}
@@ -1632,6 +1632,16 @@ export default function DashboardPage() {
                 {reportLoading ? 'Collecting Data...' : 'Download'}
               </Button>
             </div>
+            {/* Loader while preparing PDF */}
+            {reportLoading && (
+              <div className="flex flex-col items-center justify-center mt-4">
+                <svg className="animate-spin h-6 w-6 text-primary mb-2" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+                <span className="text-sm text-muted-foreground">Preparing PDF, please wait...</span>
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
