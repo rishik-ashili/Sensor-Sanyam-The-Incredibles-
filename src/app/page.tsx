@@ -25,7 +25,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/
 import GridLayout, { Responsive, WidthProvider, Layout } from 'react-grid-layout';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Accordion as ShadAccordion, AccordionItem as ShadAccordionItem, AccordionTrigger as ShadAccordionTrigger, AccordionContent as ShadAccordionContent } from "@/components/ui/accordion";
 
 ChartJS.register(
@@ -569,6 +569,7 @@ export default function DashboardPage() {
       {/* Ready Dialog */}
       <Dialog open={showReadyDialog} onOpenChange={setShowReadyDialog}>
         <DialogContent className="sm:max-w-md">
+          <DialogTitle className="sr-only">Ready to Go</DialogTitle>
           <div className="flex flex-col items-center justify-center p-4">
             <div className="text-2xl font-semibold text-green-600 mb-2">Ready to Go!</div>
             <p className="text-center text-muted-foreground">
