@@ -288,12 +288,11 @@ export default function DashboardPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [openDevices, setOpenDevices] = useState<string[]>([]);
-  const { toast } = useToast();
-  const [notificationsOn, setNotificationsOn] = useState(true);
-  // Track previous values for threshold crossing detection
-  const prevValuesRef = useRef<{ [topic: string]: { value: number | null, above: boolean | null } }>({});
-  // Track which topics have been notified for being above threshold
-  const notifiedAboveRef = useRef<{ [topic: string]: boolean }>({});
+  const { toast, dismiss } = useToast();
+  const [notificationsOn, setNotificationsOn] = useState(false); // OFF by default
+  const [loadingPeriod, setLoadingPeriod] = useState(true); // true for first 15s
+  // Track toast ids for each topic
+  const toastIdsRef = useRef<{ [topic: string]: string }>({});
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -509,46 +508,49 @@ export default function DashboardPage() {
     });
   }, [sensors]);
 
-  // Show notifications for all above-threshold values when notifications are turned ON
+  // 15s loading period effect
   useEffect(() => {
-    if (!notificationsOn) return;
+    const timer = setTimeout(() => setLoadingPeriod(false), 15000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Show/dismiss threshold notifications based on state
+  useEffect(() => {
+    if (loadingPeriod) return; // No notifications during loading
+    // Dismiss all threshold notifications if notifications are turned off
+    if (!notificationsOn) {
+      Object.values(toastIdsRef.current).forEach(id => dismiss(id));
+      toastIdsRef.current = {};
+      return;
+    }
+    // Notifications ON: show for all above-threshold
     Object.entries(sensors).forEach(([topic, sensor]) => {
       if (sensor.threshold === undefined || sensor.latestValue === null || isEnergySensor(sensor)) return;
       const above = sensor.latestValue > sensor.threshold;
-      if (above && !notifiedAboveRef.current[topic]) {
-        toast({
+      const existingId = toastIdsRef.current[topic];
+      if (above && !existingId) {
+        // Show notification and store id
+        const t = toast({
           title: `${sensor.displayName} Threshold Crossed`,
           description: `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
           variant: 'destructive',
           duration: 1000000,
         });
-        notifiedAboveRef.current[topic] = true;
+        toastIdsRef.current[topic] = t.id;
+      } else if (!above && existingId) {
+        // Dismiss notification if value goes below threshold
+        dismiss(existingId);
+        delete toastIdsRef.current[topic];
       }
     });
-  }, [notificationsOn, sensors, toast]);
-
-  // Threshold crossing notification logic inside useEffect for sensors
-  useEffect(() => {
-    if (!notificationsOn) return;
-    Object.entries(sensors).forEach(([topic, sensor]) => {
-      if (sensor.threshold === undefined || sensor.latestValue === null || isEnergySensor(sensor)) return;
-      const prev = prevValuesRef.current[topic] || { value: null, above: null };
-      const above = sensor.latestValue > sensor.threshold;
-      if (prev.value !== null && prev.above !== null && above !== prev.above) {
-        // Threshold crossing detected
-        toast({
-          title: `${sensor.displayName} Threshold ${above ? "Crossed" : "Restored"}`,
-          description: above
-            ? `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`
-            : `${sensor.displayName} is back below threshold. Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
-          variant: above ? 'destructive' : undefined,
-          duration: 1000000,
-        });
-        notifiedAboveRef.current[topic] = above;
+    // Dismiss notifications for topics that no longer exist
+    Object.keys(toastIdsRef.current).forEach(topic => {
+      if (!sensors[topic] || sensors[topic].threshold === undefined || sensors[topic].latestValue === null || isEnergySensor(sensors[topic])) {
+        dismiss(toastIdsRef.current[topic]);
+        delete toastIdsRef.current[topic];
       }
-      prevValuesRef.current[topic] = { value: sensor.latestValue, above };
     });
-  }, [sensors, notificationsOn, toast]);
+  }, [notificationsOn, sensors, loadingPeriod, toast, dismiss]);
 
   const getMqttStatusDisplay = () => {
     if (isSocketConnecting && !socket?.connected) {
