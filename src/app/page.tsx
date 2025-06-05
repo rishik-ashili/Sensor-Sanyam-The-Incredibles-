@@ -1233,6 +1233,7 @@ export default function DashboardPage() {
                 description: next
                   ? "Notifications are turned on."
                   : "Notifications are off.",
+                duration: 2000, // Auto-dismiss after 2 seconds
               });
             }}
           >
