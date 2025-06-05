@@ -292,6 +292,8 @@ export default function DashboardPage() {
   const [notificationsOn, setNotificationsOn] = useState(true);
   // Track previous values for threshold crossing detection
   const prevValuesRef = useRef<{ [topic: string]: { value: number | null, above: boolean | null } }>({});
+  // Track which topics have been notified for being above threshold
+  const notifiedAboveRef = useRef<{ [topic: string]: boolean }>({});
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -507,6 +509,22 @@ export default function DashboardPage() {
     });
   }, [sensors]);
 
+  // Show notifications for all above-threshold values when notifications are turned ON
+  useEffect(() => {
+    if (!notificationsOn) return;
+    Object.entries(sensors).forEach(([topic, sensor]) => {
+      if (sensor.threshold === undefined || sensor.latestValue === null || isEnergySensor(sensor)) return;
+      const above = sensor.latestValue > sensor.threshold;
+      if (above && !notifiedAboveRef.current[topic]) {
+        toast({
+          title: `${sensor.displayName} Threshold Crossed`,
+          description: `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
+        });
+        notifiedAboveRef.current[topic] = true;
+      }
+    });
+  }, [notificationsOn, sensors, toast]);
+
   // Threshold crossing notification logic inside useEffect for sensors
   useEffect(() => {
     if (!notificationsOn) return;
@@ -522,6 +540,7 @@ export default function DashboardPage() {
             ? `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`
             : `${sensor.displayName} is back below threshold. Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
         });
+        notifiedAboveRef.current[topic] = above;
       }
       prevValuesRef.current[topic] = { value: sensor.latestValue, above };
     });
