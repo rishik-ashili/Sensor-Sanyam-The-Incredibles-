@@ -5,7 +5,7 @@ import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle } from 'lucide-react';
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle, Bell, BellOff } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -27,6 +27,7 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Accordion as ShadAccordion, AccordionItem as ShadAccordionItem, AccordionTrigger as ShadAccordionTrigger, AccordionContent as ShadAccordionContent } from "@/components/ui/accordion";
+import { useToast } from "@/hooks/use-toast";
 
 ChartJS.register(
   CategoryScale,
@@ -287,6 +288,8 @@ export default function DashboardPage() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [analyticsOpen, setAnalyticsOpen] = useState(false);
   const [openDevices, setOpenDevices] = useState<string[]>([]);
+  const { toast } = useToast();
+  const [notificationsOn, setNotificationsOn] = useState(true);
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -1125,6 +1128,28 @@ export default function DashboardPage() {
             </ShadAccordionContent>
           </ShadAccordionItem>
         </ShadAccordion>
+      </div>
+
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button
+          variant={notificationsOn ? "default" : "outline"}
+          className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2"
+          onClick={() => {
+            setNotificationsOn((prev) => {
+              const next = !prev;
+              toast({
+                title: next ? "Notifications On" : "Notifications Off",
+                description: next
+                  ? "Notifications are turned on."
+                  : "Notifications are off.",
+              });
+              return next;
+            });
+          }}
+        >
+          {notificationsOn ? <Bell className="mr-2" /> : <BellOff className="mr-2" />}
+          {notificationsOn ? "Notifications On" : "Notifications Off"}
+        </Button>
       </div>
     </div>
   );
