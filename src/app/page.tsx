@@ -755,7 +755,19 @@ export default function DashboardPage() {
     setDeviceScale(prev => ({ ...prev, [device]: scale }));
     if (scaleTimeouts.current[device]) clearTimeout(scaleTimeouts.current[device]!);
     scaleTimeouts.current[device] = setTimeout(() => {
-      fetch(`/api/device-control?device=${device}&scale=${scale}`, { method: 'POST' });
+      fetch(`/api/device-control?device=${device}&scale=${scale}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }).catch(error => {
+        console.error('Failed to send scale control:', error);
+        toast({
+          title: "Error",
+          description: "Failed to update device scale. Please try again.",
+          variant: "destructive"
+        });
+      });
     }, 500);
   };
 

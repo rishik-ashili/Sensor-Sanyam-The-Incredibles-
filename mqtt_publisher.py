@@ -73,19 +73,19 @@ energy_values = [0.0 for _ in sensors]
 for _ in range(5):
     for i, sensor in enumerate(sensors):
         # Publish sensor value
-        value = current_values[i]
+        value = current_values[i] * scale
         payload = {
             "value": round(value, 2),
             "timestamp": datetime.utcnow().isoformat(),
             "unit": sensor["unit"],
             "device": "rpi1",
             "coordinates": {"lat": 12.9716, "lon": 77.5946},
-            "threshold": sensor["threshold"]  # Add threshold to payload
+            "threshold": sensor["threshold"]
         }
         topic = f"{BASE_TOPIC}/{sensor['name']}"
         client.publish(topic, json.dumps(payload))
         # Publish per-sensor energy value
-        energy_values[i] += random.uniform(0.1, 1.0)
+        energy_values[i] += random.uniform(0.1, 1.0) * scale
         energy_payload = {
             "value": round(energy_values[i], 2),
             "timestamp": datetime.utcnow().isoformat(),
