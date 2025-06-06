@@ -886,7 +886,32 @@ export default function DashboardPage() {
               <div className="text-muted-foreground py-8">No device coordinates available.</div>
             ) : (
               <svg width={500} height={350} style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e5e7eb' }}>
-                {/* Compute bounds */}
+                {/* Subtle grid lines for orientation */}
+                {[...Array(6)].map((_, i) => (
+                  <line
+                    key={`vgrid-${i}`}
+                    x1={50 + i * 80}
+                    y1={30}
+                    x2={50 + i * 80}
+                    y2={320}
+                    stroke="#e5e7eb"
+                    strokeDasharray="4 4"
+                    strokeWidth={1}
+                  />
+                ))}
+                {[...Array(4)].map((_, i) => (
+                  <line
+                    key={`hgrid-${i}`}
+                    x1={50}
+                    y1={50 + i * 80}
+                    x2={450}
+                    y2={50 + i * 80}
+                    stroke="#e5e7eb"
+                    strokeDasharray="4 4"
+                    strokeWidth={1}
+                  />
+                ))}
+                {/* Device pins with improved placement and status ring */}
                 {(() => {
                   const lats = deviceCoords.map(d => d.lat);
                   const lons = deviceCoords.map(d => d.lon);
@@ -894,27 +919,40 @@ export default function DashboardPage() {
                   const maxLat = Math.max(...lats);
                   const minLon = Math.min(...lons);
                   const maxLon = Math.max(...lons);
-                  const pad = 0.01; // Add a small padding
-                  // Map lat/lon to SVG coordinates
+                  const pad = 0.02; // More padding
                   function mapToSvg(lat: number, lon: number) {
                     // Y: top is maxLat, bottom is minLat
-                    const y = 30 + ((maxLat - lat) / (maxLat - minLat + 2 * pad)) * 290;
+                    const y = 70 + ((maxLat - lat) / (maxLat - minLat + 2 * pad)) * 210;
                     // X: left is minLon, right is maxLon
-                    const x = 30 + ((lon - minLon) / (maxLon - minLon + 2 * pad)) * 440;
+                    const x = 70 + ((lon - minLon) / (maxLon - minLon + 2 * pad)) * 360;
                     return { x, y };
                   }
                   return deviceCoords.map((d, i) => {
                     const { x, y } = mapToSvg(d.lat, d.lon);
+                    const online = deviceEnabled[d.device] !== false && liveDeviceNames.includes(d.device);
                     return (
                       <g key={d.device}>
-                        <circle cx={x} cy={y} r={14} fill="#2563eb" stroke="#1e40af" strokeWidth={2} />
-                        <text x={x} y={y + 28} textAnchor="middle" fontSize={14} fill="#1e293b" fontWeight="bold">{d.device}</text>
-                        <text x={x} y={y + 44} textAnchor="middle" fontSize={12} fill="#64748b">({d.lat.toFixed(5)}, {d.lon.toFixed(5)})</text>
-                        <MapPin x={x - 10} y={y - 20} width={20} height={20} color="#f59e42" />
+                        {/* Status ring */}
+                        <circle cx={x} cy={y} r={18} fill="#2563eb" stroke={online ? "#22c55e" : "#ef4444"} strokeWidth={4} />
+                        {/* Pin icon */}
+                        <MapPin x={x - 10} y={y - 28} width={20} height={20} color={online ? "#22c55e" : "#ef4444"} />
+                        {/* Device name above */}
+                        <text x={x} y={y - 34} textAnchor="middle" fontSize={15} fill="#1e293b" fontWeight="bold">{d.device}</text>
+                        {/* Coordinates below, selectable */}
+                        <text x={x} y={y + 32} textAnchor="middle" fontSize={12} fill="#64748b" style={{ userSelect: 'all' }}>
+                          ({d.lat.toFixed(5)}, {d.lon.toFixed(5)})
+                        </text>
                       </g>
                     );
                   });
                 })()}
+                {/* Legend for online/offline */}
+                <g>
+                  <circle cx={420} cy={320} r={8} fill="#2563eb" stroke="#22c55e" strokeWidth={3} />
+                  <text x={435} y={324} fontSize={12} fill="#1e293b">Online</text>
+                  <circle cx={420} cy={340} r={8} fill="#2563eb" stroke="#ef4444" strokeWidth={3} />
+                  <text x={435} y={344} fontSize={12} fill="#1e293b">Offline</text>
+                </g>
               </svg>
             )}
             <div className="text-xs text-muted-foreground mt-2">(Map is a visualization, not to scale or georeferenced)</div>
