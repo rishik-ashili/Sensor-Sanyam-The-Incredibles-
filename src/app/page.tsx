@@ -5,7 +5,7 @@ import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle, Bell, BellOff, Sun, Moon, Palette } from 'lucide-react';
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle, Bell, BellOff, Sun, Moon, Palette, MapPin } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -302,6 +302,7 @@ export default function DashboardPage() {
   const [deviceScale, setDeviceScale] = useState<{ [device: string]: number }>({ rpi1: 1.0, rpi2: 1.0 });
   const scaleTimeouts = useRef<{ [device: string]: NodeJS.Timeout | null }>({ rpi1: null, rpi2: null });
   const [thresholdAlertActive, setThresholdAlertActive] = useState(false);
+  const [mapModalOpen, setMapModalOpen] = useState(false);
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -822,6 +823,18 @@ export default function DashboardPage() {
     { key: 'hourly', label: 'Hourly Avg' },
   ];
 
+  // Gather all devices with coordinates
+  const deviceCoords = useMemo(() => {
+    const coords: { device: string; lat: number; lon: number }[] = [];
+    Object.values(sensorsByDevice).forEach((sArr, i) => {
+      const sensorWithCoords = sArr.find(s => s.coordinates && typeof s.coordinates.lat === 'number' && typeof s.coordinates.lon === 'number');
+      if (sensorWithCoords) {
+        coords.push({ device: sensorWithCoords.device || `Device${i + 1}`, lat: sensorWithCoords.coordinates.lat, lon: sensorWithCoords.coordinates.lon });
+      }
+    });
+    return coords;
+  }, [sensorsByDevice]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Loading Overlay */}
@@ -853,6 +866,60 @@ export default function DashboardPage() {
       {thresholdAlertActive && (
         <div style={{ pointerEvents: 'none' }} className="fixed inset-0 z-[9999] bg-red-600/30 transition-opacity duration-300" />
       )}
+
+      {/* Floating Map Button (bottom left) */}
+      <div className="fixed bottom-10 left-6 z-50">
+        <Button
+          className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2 bg-primary text-primary-foreground"
+          onClick={() => setMapModalOpen(true)}
+        >
+          <MapPin className="h-5 w-5 mr-2" />
+          Show Device Map
+        </Button>
+      </div>
+      {/* Map Modal */}
+      <Dialog open={mapModalOpen} onOpenChange={setMapModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogTitle>Device Locations Map</DialogTitle>
+          <div className="w-full flex flex-col items-center">
+            {deviceCoords.length === 0 ? (
+              <div className="text-muted-foreground py-8">No device coordinates available.</div>
+            ) : (
+              <svg width={500} height={350} style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid #e5e7eb' }}>
+                {/* Compute bounds */}
+                {(() => {
+                  const lats = deviceCoords.map(d => d.lat);
+                  const lons = deviceCoords.map(d => d.lon);
+                  const minLat = Math.min(...lats);
+                  const maxLat = Math.max(...lats);
+                  const minLon = Math.min(...lons);
+                  const maxLon = Math.max(...lons);
+                  const pad = 0.01; // Add a small padding
+                  // Map lat/lon to SVG coordinates
+                  function mapToSvg(lat: number, lon: number) {
+                    // Y: top is maxLat, bottom is minLat
+                    const y = 30 + ((maxLat - lat) / (maxLat - minLat + 2 * pad)) * 290;
+                    // X: left is minLon, right is maxLon
+                    const x = 30 + ((lon - minLon) / (maxLon - minLon + 2 * pad)) * 440;
+                    return { x, y };
+                  }
+                  return deviceCoords.map((d, i) => {
+                    const { x, y } = mapToSvg(d.lat, d.lon);
+                    return (
+                      <g key={d.device}>
+                        <circle cx={x} cy={y} r={14} fill="#2563eb" stroke="#1e40af" strokeWidth={2} />
+                        <text x={x} y={y + 28} textAnchor="middle" fontSize={14} fill="#1e293b">{d.device}</text>
+                        <MapPin x={x - 10} y={y - 20} width={20} height={20} color="#f59e42" />
+                      </g>
+                    );
+                  });
+                })()}
+              </svg>
+            )}
+            <div className="text-xs text-muted-foreground mt-2">(Map is a visualization, not to scale or georeferenced)</div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="space-y-8 p-2 md:p-6">
         <Card className="border border-border shadow-md">
