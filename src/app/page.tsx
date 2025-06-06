@@ -1437,7 +1437,7 @@ export default function DashboardPage() {
                 <span className="ml-1">seconds</span>
               </div>
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
               <Button
                 disabled={reportLoading || reportSensors.length === 0 || reportGraphs.length === 0}
                 onClick={async () => {
@@ -1629,7 +1629,62 @@ export default function DashboardPage() {
                   setReportModalOpen(false);
                 }}
               >
-                {reportLoading ? 'Collecting Data...' : 'Download'}
+                {reportLoading ? 'Collecting Data...' : 'Download PDF'}
+              </Button>
+              {/* Download as CSV Button */}
+              <Button
+                disabled={reportLoading || reportSensors.length === 0}
+                variant="outline"
+                onClick={async () => {
+                  setReportLoading(true);
+                  setReportBuffer({});
+                  // Start buffering for the selected duration
+                  const buffer: { [topic: string]: HistoryPoint[] } = {};
+                  const start = Date.now();
+                  const end = start + reportDuration * 1000;
+                  function onData(topic: string, payload: HistoryPoint) {
+                    if (!reportSensors.includes(topic)) return;
+                    buffer[topic] = buffer[topic] || [];
+                    buffer[topic].push(payload);
+                  }
+                  // Attach a temporary listener to buffer data
+                  const handler = (data: any) => {
+                    if (data && data.topic && data.payload) {
+                      onData(data.topic, { value: data.payload.value, timestamp: data.payload.timestamp });
+                    }
+                  };
+                  socketRef.current?.on('sensor_data', handler);
+                  // Wait for the duration
+                  await new Promise(res => setTimeout(res, reportDuration * 1000));
+                  socketRef.current?.off('sensor_data', handler);
+                  setReportBuffer(buffer);
+                  // --- CSV GENERATION LOGIC ---
+                  // Use the dashboard's current chart data for the CSV
+                  let csv = 'Sensor,Time,Value\n';
+                  for (const topic of reportSensors) {
+                    const sensor = filteredSensors[topic];
+                    if (!sensor) continue;
+                    const dashboardSensor = filteredSensors[topic];
+                    const history = (dashboardSensor?.history || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    for (const point of history) {
+                      csv += `"${sensor.displayName}","${point.timestamp}",${point.value}\n`;
+                    }
+                  }
+                  // Download CSV
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'sensorflow_report.csv';
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  setReportLoading(false);
+                  setReportModalOpen(false);
+                }}
+              >
+                {reportLoading ? 'Collecting Data...' : 'Download CSV'}
               </Button>
             </div>
             {/* Loader while preparing PDF */}
