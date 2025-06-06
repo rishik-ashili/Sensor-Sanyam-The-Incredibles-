@@ -908,7 +908,8 @@ export default function DashboardPage() {
                     return (
                       <g key={d.device}>
                         <circle cx={x} cy={y} r={14} fill="#2563eb" stroke="#1e40af" strokeWidth={2} />
-                        <text x={x} y={y + 28} textAnchor="middle" fontSize={14} fill="#1e293b">{d.device}</text>
+                        <text x={x} y={y + 28} textAnchor="middle" fontSize={14} fill="#1e293b" fontWeight="bold">{d.device}</text>
+                        <text x={x} y={y + 44} textAnchor="middle" fontSize={12} fill="#64748b">({d.lat.toFixed(5)}, {d.lon.toFixed(5)})</text>
                         <MapPin x={x - 10} y={y - 20} width={20} height={20} color="#f59e42" />
                       </g>
                     );
