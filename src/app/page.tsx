@@ -18,7 +18,8 @@ import {
   Legend as ChartJsLegend,
   TimeScale,
   BarElement,
-  BarController
+  BarController,
+  ScatterController
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { format as formatDate, parseISO, subMinutes, isAfter } from 'date-fns';
@@ -46,7 +47,8 @@ ChartJS.register(
   ChartJsLegend,
   TimeScale,
   BarElement,
-  BarController
+  BarController,
+  ScatterController
 );
 
 const MAX_HISTORY_POINTS_CLIENT = 50; // Max history points to keep on client if receiving rapidly before initial load
@@ -110,15 +112,15 @@ function formatTopicName(topic: string): string {
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
 // Helper for change rate (delta)
-function getDelta(arr) {
+function getDelta(arr: number[]): (number | null)[] {
   if (arr.length < 2) return [];
-  return arr.map((v, i) => (i === 0 ? null : v - arr[i - 1]));
+  return arr.map((v: number, i: number) => (i === 0 ? null : v - arr[i - 1]));
 }
 
 // Helper for uptime (simulate: if last update < 2x interval, online)
-function getUptime(timestamps, interval = 1000) {
+function getUptime(timestamps: string[], interval: number = 1000): number[] {
   if (!timestamps.length) return [];
-  const bins = [];
+  const bins: number[] = [];
   let last = new Date(timestamps[0]).getTime();
   for (let i = 1; i < timestamps.length; i++) {
     const t = new Date(timestamps[i]).getTime();
@@ -129,11 +131,11 @@ function getUptime(timestamps, interval = 1000) {
 }
 
 // Helper for hourly bar chart
-function getHourlyAverages(timestamps, values) {
-  const byHour = {};
-  timestamps.forEach((ts, i) => {
+function getHourlyAverages(timestamps: string[], values: number[]): { hour: string; avg: number }[] {
+  const byHour: { [hour: string]: number[] } = {};
+  timestamps.forEach((ts: string, i: number) => {
     const d = new Date(ts);
-    const hour = d.getHours();
+    const hour = d.getHours().toString();
     if (!byHour[hour]) byHour[hour] = [];
     byHour[hour].push(values[i]);
   });
@@ -141,9 +143,9 @@ function getHourlyAverages(timestamps, values) {
 }
 
 // Helper for heatmap (hour x minute, value)
-function getHeatmapData(timestamps, values) {
-  const map = {};
-  timestamps.forEach((ts, i) => {
+function getHeatmapData(timestamps: string[], values: number[]): { time: string; avg: number }[] {
+  const map: { [key: string]: number[] } = {};
+  timestamps.forEach((ts: string, i: number) => {
     const d = new Date(ts);
     const key = `${d.getHours()}:${d.getMinutes()}`;
     if (!map[key]) map[key] = [];
@@ -153,29 +155,29 @@ function getHeatmapData(timestamps, values) {
 }
 
 // Helper for histogram (all sensors)
-function getAllSensorPeaks(sensors) {
+function getAllSensorPeaks(sensors: SensorsState): number[] {
   return Object.values(sensors).map(sensor => {
-    const values = sensor.history.map(p => p.value);
+    const values = sensor.history.map((p: HistoryPoint) => p.value);
     return values.length ? Math.max(...values) : null;
-  }).filter(v => v !== null);
+  }).filter((v): v is number => v !== null);
 }
 
 // Helper for 10s peak per sensor (dynamic, always returns a number)
-function get10sPeak(sensors) {
+function get10sPeak(sensors: SensorsState): number[] {
   const now = Date.now();
   return Object.values(sensors).map(sensor => {
-    const recent = sensor.history.filter(p => now - new Date(p.timestamp).getTime() <= 10000);
-    const peak = recent.length ? Math.max(...recent.map(p => p.value)) : 0;
+    const recent = sensor.history.filter((p: HistoryPoint) => now - new Date(p.timestamp).getTime() <= 10000);
+    const peak = recent.length ? Math.max(...recent.map((p: HistoryPoint) => p.value)) : 0;
     return peak;
   });
 }
 
 // Helper to get latest energy value per device
-function getLatestEnergyPerDevice(sensors) {
+function getLatestEnergyPerDevice(sensors: SensorsState): { deviceNames: string[]; values: number[] } {
   // Find all sensors with topic ending in '/energy'
   const energySensors = Object.values(sensors).filter(s => s.topic.endsWith('/energy'));
   // Group by device
-  const byDevice = {};
+  const byDevice: { [device: string]: SensorDisplayData } = {};
   energySensors.forEach(s => {
     const device = s.device || 'Unknown';
     if (!byDevice[device] || (s.lastUpdateTimestamp && (!byDevice[device].lastUpdateTimestamp || s.lastUpdateTimestamp > byDevice[device].lastUpdateTimestamp))) {
@@ -188,7 +190,7 @@ function getLatestEnergyPerDevice(sensors) {
 }
 
 // Helper to get latest per-sensor energy values for a device
-function getLatestEnergyPerSensorForDevice(sensors, device) {
+function getLatestEnergyPerSensorForDevice(sensors: SensorsState, device: string): { sensorNames: string[]; values: number[] } {
   // Find all sensors for this device with topic ending in '/energy'
   const energySensors = Object.values(sensors).filter(s => s.device === device && /\/[^/]+\/energy$/.test(s.topic));
   // Map: sensor name (from topic) => latest value
@@ -201,7 +203,7 @@ function getLatestEnergyPerSensorForDevice(sensors, device) {
 }
 
 // Helper to check if a sensor is an energy metric
-function isEnergySensor(sensor) {
+function isEnergySensor(sensor: SensorDisplayData): boolean {
   return /\/[^/]+\/energy$/.test(sensor.topic);
 }
 
@@ -832,7 +834,7 @@ export default function DashboardPage() {
     const coords: { device: string; lat: number; lon: number }[] = [];
     Object.values(sensorsByDevice).forEach((sArr, i) => {
       const sensorWithCoords = sArr.find(s => s.coordinates && typeof s.coordinates.lat === 'number' && typeof s.coordinates.lon === 'number');
-      if (sensorWithCoords) {
+      if (sensorWithCoords && sensorWithCoords.coordinates) {
         coords.push({ device: sensorWithCoords.device || `Device${i + 1}`, lat: sensorWithCoords.coordinates.lat, lon: sensorWithCoords.coordinates.lon });
       }
     });
@@ -1159,7 +1161,7 @@ export default function DashboardPage() {
           Restore All Tiles
         </Button>
 
-        <Accordion type="multiple" collapsible="true" value={openDevices} onValueChange={setOpenDevices}>
+        <Accordion type="multiple" value={openDevices} onValueChange={setOpenDevices}>
           {allDeviceNames.map((device) => {
             const deviceSensors = getDeviceSensors(device);
             const coords = getDeviceCoordinates(deviceSensors);
@@ -1219,7 +1221,7 @@ export default function DashboardPage() {
                       rowHeight={80}
                       isResizable
                       isDraggable
-                      onLayoutChange={l => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
+                      onLayoutChange={(l: Layout[]) => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
                       measureBeforeMount={false}
                       useCSSTransforms={true}
                       compactType="vertical"
@@ -1298,7 +1300,7 @@ export default function DashboardPage() {
         </Accordion>
 
         {/* Sensor Summary Section */}
-        <ShadAccordion type="single" collapsible="true" value={summaryOpen ? "summary" : undefined} onValueChange={v => setSummaryOpen(v === "summary")}>
+        <ShadAccordion type="single" collapsible value={summaryOpen ? "summary" : undefined} onValueChange={v => setSummaryOpen(v === "summary")}>
           <ShadAccordionItem value="summary">
             <ShadAccordionTrigger className="text-xl font-headline">Sensor Summary</ShadAccordionTrigger>
             <ShadAccordionContent>
@@ -1400,7 +1402,7 @@ export default function DashboardPage() {
                                 backgroundColor: 'rgba(59,130,246,0.7)',
                                 borderColor: 'rgba(59,130,246,1)',
                                 borderWidth: 2,
-                                type: 'bar',
+                                // type: 'bar', // Remove or comment out this line
                               }],
                             }}
                           />
@@ -1422,7 +1424,7 @@ export default function DashboardPage() {
                     const median = values.length ? [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] : null;
                     const stddev = values.length ? Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length) : null;
                     // Rolling averages
-                    function rollingAvg(arr, window) {
+                    function rollingAvg(arr: number[], window: number): (number | null)[] {
                       if (arr.length < window) return [];
                       return arr.map((_, i) => {
                         if (i < window - 1) return null;
@@ -1440,10 +1442,13 @@ export default function DashboardPage() {
                     // Hourly bar chart
                     const hourly = getHourlyAverages(timestamps, values);
                     // Anomaly detection (2 stddev)
-                    const anomalies = values.map((v, i) => (Math.abs(v - avg) > 2 * stddev ? { x: timestamps[i], y: v } : null)).filter(Boolean);
-                    // Peak/trough markers
-                    const peakIndex = values.length ? values.indexOf(max) : -1;
-                    const troughIndex = values.length ? values.indexOf(min) : -1;
+                    const avgSafe = avg ?? 0;
+                    const stddevSafe = stddev ?? 0;
+                    const anomalies = (avg !== null && stddev !== null)
+                      ? values.map((v, i) => (Math.abs(v - avgSafe) > 2 * stddevSafe ? { x: timestamps[i], y: v } : null)).filter(Boolean)
+                      : [];
+                    const peakIndex = (max !== null) ? values.indexOf(max) : -1;
+                    const troughIndex = (min !== null) ? values.indexOf(min) : -1;
                     const minimized = minimizedAnalytics[sensor.topic] || false;
                     const tab = selectedGraphTab[sensor.topic] || 'rolling';
                     return (
@@ -1507,12 +1512,9 @@ export default function DashboardPage() {
                                       { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
                                       { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
                                       { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
-                                      // Peak marker
-                                      peakIndex >= 0 ? { label: 'Peak', data: timestamps.map((_, i) => i === peakIndex ? max : null), borderColor: '#ef4444', backgroundColor: '#ef4444', pointRadius: 6, type: 'scatter', showLine: false } : {},
-                                      // Trough marker
-                                      troughIndex >= 0 ? { label: 'Trough', data: timestamps.map((_, i) => i === troughIndex ? min : null), borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter', showLine: false } : {},
-                                      // Anomalies
-                                      anomalies.length ? { label: 'Anomaly', data: timestamps.map((t, i) => anomalies.find(a => a.x === t) ? values[i] : null), borderColor: '#f59e42', backgroundColor: '#f59e42', pointRadius: 5, type: 'scatter', showLine: false } : {},
+                                      peakIndex >= 0 ? { label: 'Peak', data: timestamps.map((_, i) => i === peakIndex ? max : null), borderColor: '#ef4444', backgroundColor: '#ef4444', pointRadius: 6, type: 'scatter', showLine: false } as any : undefined,
+                                      troughIndex >= 0 ? { label: 'Trough', data: timestamps.map((_, i) => i === troughIndex ? min : null), borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter', showLine: false } as any : undefined,
+                                      anomalies.length ? { label: 'Anomaly', data: timestamps.map((t, i) => anomalies.find(a => a && a.x === t) ? values[i] : null), borderColor: '#f59e42', backgroundColor: '#f59e42', pointRadius: 5, type: 'scatter', showLine: false } as any : undefined,
                                     ].filter(Boolean),
                                   }} />
                                 </div>
@@ -2004,7 +2006,7 @@ export default function DashboardPage() {
                   <span style={{ fontWeight: m.role === 'ai' ? 600 : 400, color: m.role === 'ai' ? '#38bdf8' : '#fbbf24' }}>{m.role === 'ai' ? 'AI:' : 'You:'}</span>
                   <span style={{ marginLeft: 6 }}>
                     {m.role === 'ai' ? (
-                      <span dangerouslySetInnerHTML={{ __html: marked.parse(m.text) }} />
+                      <span dangerouslySetInnerHTML={{ __html: (typeof marked.parse === 'function' && marked.parse.constructor.name === 'AsyncFunction') ? await marked.parse(m.text) : marked.parse(m.text) }} />
                     ) : (
                       m.text
                     )}
