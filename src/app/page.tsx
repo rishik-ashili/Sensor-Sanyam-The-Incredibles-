@@ -941,12 +941,16 @@ export default function DashboardPage() {
     setAiChatInput("");
     try {
       const ai = new GoogleGenAI({ apiKey: aiApiKey });
-      // Map chat history to Gemini format: role 'user' or 'model'
-      const context = aiChatMessages.map(m =>
-        m.role === 'user'
-          ? { role: 'user', parts: [{ text: m.text }] }
-          : { role: 'model', parts: [{ text: m.text }] }
-      );
+      // Only include real user/model messages (filter out system/placeholder/error)
+      const context = aiChatMessages
+        .filter(m => m.role === 'user' || m.role === 'ai')
+        .filter(m => !m.text.toLowerCase().includes('analysing data')) // filter out placeholder
+        .filter(m => !m.text.toLowerCase().includes('error getting ai')) // filter out error
+        .map(m =>
+          m.role === 'user'
+            ? { role: 'user', parts: [{ text: m.text }] }
+            : { role: 'model', parts: [{ text: m.text }] }
+        );
       // Add the new user message
       context.push({ role: 'user', parts: [{ text: aiChatInput }] });
       const response = await ai.models.generateContent({
