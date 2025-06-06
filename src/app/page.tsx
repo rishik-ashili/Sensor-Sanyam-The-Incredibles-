@@ -301,6 +301,7 @@ export default function DashboardPage() {
   const [deviceEnabled, setDeviceEnabled] = useState<{ [device: string]: boolean }>({ rpi1: true, rpi2: true });
   const [deviceScale, setDeviceScale] = useState<{ [device: string]: number }>({ rpi1: 1.0, rpi2: 1.0 });
   const scaleTimeouts = useRef<{ [device: string]: NodeJS.Timeout | null }>({ rpi1: null, rpi2: null });
+  const [thresholdAlertActive, setThresholdAlertActive] = useState(false);
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -539,6 +540,7 @@ export default function DashboardPage() {
     if (!notificationsOn) {
       Object.values(toastIdsRef.current).forEach(id => dismiss(id));
       toastIdsRef.current = {};
+      setThresholdAlertActive(false);
       return;
     }
     // Notifications ON: show for all above-threshold, but only for enabled devices
@@ -572,6 +574,8 @@ export default function DashboardPage() {
         delete toastIdsRef.current[topic];
       }
     });
+    // Set red tint if any threshold notification is active
+    setThresholdAlertActive(Object.keys(toastIdsRef.current).length > 0);
   }, [notificationsOn, sensors, loadingPeriod, toast, dismiss, deviceEnabled]);
 
   // Theme effect: set class on <html>
@@ -835,6 +839,11 @@ export default function DashboardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Red tint overlay when threshold alert is active */}
+      {thresholdAlertActive && (
+        <div style={{ pointerEvents: 'none' }} className="fixed inset-0 z-[9999] bg-red-600/30 transition-opacity duration-300" />
+      )}
 
       <div className="space-y-8 p-2 md:p-6">
         <Card className="border border-border shadow-md">
