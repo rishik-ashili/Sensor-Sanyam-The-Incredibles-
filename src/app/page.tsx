@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle, Bell, BellOff, Sun, Moon, Palette, MapPin } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
+import { Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -1388,7 +1389,7 @@ export default function DashboardPage() {
                       <div key={device} className="mb-8">
                         <span className="font-semibold">{`Bar Plot of Latest Energy Consumed per Sensor (${device}):`}</span>
                         <div className="h-40 w-full">
-                          <Line
+                          <Bar
                             options={{
                               ...chartOptions,
                               plugins: { ...chartOptions.plugins, legend: { display: false } },
@@ -1402,7 +1403,6 @@ export default function DashboardPage() {
                                 backgroundColor: 'rgba(59,130,246,0.7)',
                                 borderColor: 'rgba(59,130,246,1)',
                                 borderWidth: 2,
-                                // type: 'bar', // Remove or comment out this line
                               }],
                             }}
                           />
