@@ -46,7 +46,7 @@ ChartJS.register(
 );
 
 const MAX_HISTORY_POINTS_CLIENT = 50; // Max history points to keep on client if receiving rapidly before initial load
-type TimeRangeOption = 'all' | '5m' | '15m';
+type TimeRangeOption = 'all' | '1m' | '5m';
 
 interface MqttStatus {
   connected: boolean;
@@ -677,10 +677,10 @@ export default function DashboardPage() {
     const now = parseISO(history[history.length - 1].timestamp); // Use latest point as 'now'
     let startTime: Date;
 
-    if (range === '5m') {
+    if (range === '1m') {
+      startTime = subMinutes(now, 1);
+    } else if (range === '5m') {
       startTime = subMinutes(now, 5);
-    } else if (range === '15m') {
-      startTime = subMinutes(now, 15);
     } else {
       return history; // Should not happen if range is 'all'
     }
@@ -689,8 +689,8 @@ export default function DashboardPage() {
 
   const timeRangeOptions: { label: string; value: TimeRangeOption }[] = [
     { label: 'All History', value: 'all' },
+    { label: 'Last 1 Minute', value: '1m' },
     { label: 'Last 5 Minutes', value: '5m' },
-    { label: 'Last 15 Minutes', value: '15m' },
   ];
 
   const sensorsByDevice = useMemo(() => {
