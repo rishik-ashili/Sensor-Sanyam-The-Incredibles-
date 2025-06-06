@@ -33,6 +33,7 @@ import { Slider } from '@/components/ui/slider';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { GoogleGenAI } from "@google/genai";
+import marked from 'marked';
 
 ChartJS.register(
   CategoryScale,
@@ -940,9 +941,17 @@ export default function DashboardPage() {
     setAiChatInput("");
     try {
       const ai = new GoogleGenAI({ apiKey: aiApiKey });
+      // Map chat history to Gemini format: role 'user' or 'model'
+      const context = aiChatMessages.map(m =>
+        m.role === 'user'
+          ? { role: 'user', parts: [{ text: m.text }] }
+          : { role: 'model', parts: [{ text: m.text }] }
+      );
+      // Add the new user message
+      context.push({ role: 'user', parts: [{ text: aiChatInput }] });
       const response = await ai.models.generateContent({
         model: "gemini-2.0-flash",
-        contents: aiChatMessages.concat([{ role: 'user', parts: [{ text: aiChatInput }] }]).map(m => m.role === 'user' ? { role: 'user', parts: [{ text: m.text }] } : { role: 'model', parts: [{ text: m.text }] }),
+        contents: context,
         config: { systemInstruction: "You are an expert IoT dashboard assistant. Continue the conversation, answering user questions about the device and sensor data." },
       });
       setAiChatMessages(msgs => [...msgs, { role: 'ai', text: response.text || 'No response.' }]);
@@ -1987,7 +1996,13 @@ export default function DashboardPage() {
               {aiChatMessages.map((m, i) => (
                 <div key={i} style={{ marginBottom: 10, textAlign: m.role === 'ai' ? 'left' : 'right' }}>
                   <span style={{ fontWeight: m.role === 'ai' ? 600 : 400, color: m.role === 'ai' ? '#38bdf8' : '#fbbf24' }}>{m.role === 'ai' ? 'AI:' : 'You:'}</span>
-                  <span style={{ marginLeft: 6 }}>{m.text}</span>
+                  <span style={{ marginLeft: 6 }}>
+                    {m.role === 'ai' ? (
+                      <span dangerouslySetInnerHTML={{ __html: marked.parse(m.text) }} />
+                    ) : (
+                      m.text
+                    )}
+                  </span>
                 </div>
               ))}
               {aiChatLoading && <div style={{ color: '#fbbf24', fontStyle: 'italic' }}>Analysing...</div>}
