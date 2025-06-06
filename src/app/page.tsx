@@ -32,6 +32,7 @@ import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { GoogleGenAI } from "@google/genai";
 
 ChartJS.register(
   CategoryScale,
@@ -834,6 +835,122 @@ export default function DashboardPage() {
     });
     return coords;
   }, [sensorsByDevice]);
+
+  // Add state for AI Insights chat
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [aiChatCollapsed, setAiChatCollapsed] = useState(false);
+  const [aiChatLoading, setAiChatLoading] = useState(false);
+  const [aiChatMessages, setAiChatMessages] = useState<{ role: 'user' | 'ai', text: string }[]>([]);
+  const [aiChatInput, setAiChatInput] = useState("");
+  const [aiChatPos, setAiChatPos] = useState({ x: 40, y: 100 });
+  const aiChatRef = useRef<HTMLDivElement>(null);
+  const aiApiKey = "AIzaSyCmcZBgItGQvaWPwJjy5qLLdy9NPGtYhHk";
+
+  // Draggable logic
+  const dragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  function onDragStart(e: React.MouseEvent) {
+    dragging.current = true;
+    const rect = aiChatRef.current?.getBoundingClientRect();
+    dragOffset.current = {
+      x: e.clientX - (rect?.left ?? 0),
+      y: e.clientY - (rect?.top ?? 0),
+    };
+    document.body.style.userSelect = 'none';
+  }
+  function onDrag(e: MouseEvent) {
+    if (!dragging.current) return;
+    setAiChatPos({ x: e.clientX - dragOffset.current.x, y: e.clientY - dragOffset.current.y });
+  }
+  function onDragEnd() {
+    dragging.current = false;
+    document.body.style.userSelect = '';
+  }
+  useEffect(() => {
+    if (!aiChatOpen) return;
+    function move(e: MouseEvent) { onDrag(e); }
+    function up() { onDragEnd(); }
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+    return () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+  }, [aiChatOpen]);
+
+  // Collect 5s of data and send to Gemini
+  async function handleAiInsights() {
+    setAiChatOpen(true);
+    setAiChatCollapsed(false);
+    setAiChatLoading(true);
+    setAiChatMessages([{ role: 'ai', text: 'Analysing data for 5 seconds...' }]);
+    // Buffer 5s of data
+    const buffer: { [device: string]: { [param: string]: { value: number, threshold?: number, status: string } } } = {};
+    const start = Date.now();
+    function onData(data: any) {
+      if (!data || !data.topic || !data.payload) return;
+      const topic = data.topic;
+      const sensor = sensors[topic];
+      if (!sensor) return;
+      const device = sensor.device || 'Unknown';
+      const param = sensor.displayName;
+      const value = data.payload.value;
+      const threshold = sensor.threshold;
+      const status = threshold !== undefined ? (value > threshold ? 'over threshold' : 'ok') : 'no threshold';
+      if (!buffer[device]) buffer[device] = {};
+      buffer[device][param] = { value, threshold, status };
+    }
+    socketRef.current?.on('sensor_data', onData);
+    await new Promise(res => setTimeout(res, 5000));
+    socketRef.current?.off('sensor_data', onData);
+    // Prepare summary for AI
+    let summary = '';
+    Object.entries(buffer).forEach(([device, params]) => {
+      summary += `Device: ${device}\n`;
+      Object.entries(params).forEach(([param, info]) => {
+        summary += `  - ${param}: value=${info.value}`;
+        if (info.threshold !== undefined) summary += `, threshold=${info.threshold}, status=${info.status}`;
+        summary += '\n';
+      });
+    });
+    // System instruction
+    const systemInstruction =
+      "You are an expert IoT dashboard assistant. Given device and sensor data (including current value, threshold, and status), generate concise insights about the state of the RPis, how the sensors are working, any issues, and suggestions for improvement. Use short, clear sentences. If any sensor is over threshold, highlight it. If all is well, say so. Be actionable.";
+    // Call Gemini
+    try {
+      const ai = new GoogleGenAI({ apiKey: aiApiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: [
+          { role: "user", parts: [{ text: summary }] }
+        ],
+        config: { systemInstruction },
+      });
+      setAiChatMessages([{ role: 'ai', text: response.text || 'No insights.' }]);
+    } catch (e) {
+      setAiChatMessages([{ role: 'ai', text: 'Error getting AI insights.' }]);
+    }
+    setAiChatLoading(false);
+  }
+  // Handle user chat
+  async function handleAiUserMessage() {
+    if (!aiChatInput.trim()) return;
+    setAiChatMessages(msgs => [...msgs, { role: 'user', text: aiChatInput }]);
+    setAiChatLoading(true);
+    setAiChatInput("");
+    try {
+      const ai = new GoogleGenAI({ apiKey: aiApiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: aiChatMessages.concat([{ role: 'user', parts: [{ text: aiChatInput }] }]).map(m => m.role === 'user' ? { role: 'user', parts: [{ text: m.text }] } : { role: 'model', parts: [{ text: m.text }] }),
+        config: { systemInstruction: "You are an expert IoT dashboard assistant. Continue the conversation, answering user questions about the device and sensor data." },
+      });
+      setAiChatMessages(msgs => [...msgs, { role: 'ai', text: response.text || 'No response.' }]);
+    } catch (e) {
+      setAiChatMessages(msgs => [...msgs, { role: 'ai', text: 'Error getting AI response.' }]);
+    }
+    setAiChatLoading(false);
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -1838,6 +1955,58 @@ export default function DashboardPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Floating AI Insights Button (above map button) */}
+      <div className="fixed bottom-28 left-6 z-50">
+        <Button
+          className="rounded-full shadow-lg px-6 py-3 flex items-center gap-2 bg-secondary text-secondary-foreground"
+          onClick={handleAiInsights}
+        >
+          <Info className="h-5 w-5 mr-2" />
+          AI Insights
+        </Button>
+      </div>
+      {/* AI Insights Chat Window */}
+      {aiChatOpen && (
+        <div
+          ref={aiChatRef}
+          style={{ position: 'fixed', left: aiChatPos.x, top: aiChatPos.y, zIndex: 99999, width: 350, boxShadow: '0 4px 24px #0002', borderRadius: 12, background: '#18181b', color: '#fff', resize: 'both', minHeight: 80 }}
+        >
+          <div
+            style={{ cursor: 'move', background: '#27272a', borderTopLeftRadius: 12, borderTopRightRadius: 12, padding: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            onMouseDown={onDragStart}
+          >
+            <span style={{ fontWeight: 600 }}>AI Insights</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button size="icon" variant="ghost" onClick={() => setAiChatCollapsed(c => !c)}><ChevronDown className={`h-5 w-5 transition-transform ${aiChatCollapsed ? '' : 'rotate-180'}`} /></Button>
+              <Button size="icon" variant="destructive" onClick={() => setAiChatOpen(false)}><XCircle className="h-5 w-5" /></Button>
+            </div>
+          </div>
+          {!aiChatCollapsed && (
+            <div style={{ maxHeight: 350, overflowY: 'auto', padding: 12, background: '#18181b' }}>
+              {aiChatMessages.map((m, i) => (
+                <div key={i} style={{ marginBottom: 10, textAlign: m.role === 'ai' ? 'left' : 'right' }}>
+                  <span style={{ fontWeight: m.role === 'ai' ? 600 : 400, color: m.role === 'ai' ? '#38bdf8' : '#fbbf24' }}>{m.role === 'ai' ? 'AI:' : 'You:'}</span>
+                  <span style={{ marginLeft: 6 }}>{m.text}</span>
+                </div>
+              ))}
+              {aiChatLoading && <div style={{ color: '#fbbf24', fontStyle: 'italic' }}>Analysing...</div>}
+            </div>
+          )}
+          {!aiChatCollapsed && (
+            <form style={{ display: 'flex', borderTop: '1px solid #27272a', background: '#18181b' }} onSubmit={e => { e.preventDefault(); handleAiUserMessage(); }}>
+              <input
+                value={aiChatInput}
+                onChange={e => setAiChatInput(e.target.value)}
+                placeholder="Ask about your devices..."
+                style={{ flex: 1, padding: 8, background: '#27272a', color: '#fff', border: 'none', borderBottomLeftRadius: 12 }}
+                disabled={aiChatLoading}
+              />
+              <Button type="submit" disabled={aiChatLoading || !aiChatInput.trim()} style={{ borderBottomRightRadius: 12 }}>Send</Button>
+            </form>
+          )}
+        </div>
+      )}
     </div>
   );
 }
