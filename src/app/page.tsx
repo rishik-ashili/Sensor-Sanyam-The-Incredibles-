@@ -797,6 +797,7 @@ export default function DashboardPage() {
   const [reportDuration, setReportDuration] = useState(10); // seconds
   const [reportLoading, setReportLoading] = useState(false);
   const [reportBuffer, setReportBuffer] = useState<{ [topic: string]: HistoryPoint[] }>({});
+  const [reportIncludeOriginalPerSecond, setReportIncludeOriginalPerSecond] = useState(false);
 
   // Helper: all available sensor topics (non-energy)
   const allSensorTopics = useMemo(() => Object.values(filteredSensors).filter(s => !isEnergySensor(s)).map(s => s.topic), [filteredSensors]);
@@ -1423,6 +1424,10 @@ export default function DashboardPage() {
                 <input type="checkbox" checked={reportIncludeDeviceInfo} onChange={e => setReportIncludeDeviceInfo(e.target.checked)} />
                 <span className="ml-1">Include Device Info</span>
               </label>
+              <label className="flex items-center">
+                <input type="checkbox" checked={reportIncludeOriginalPerSecond} onChange={e => setReportIncludeOriginalPerSecond(e.target.checked)} />
+                <span className="ml-1">Download only original values (1 per second)</span>
+              </label>
             </div>
             <div>
               <div className="font-semibold mb-1">Select Duration</div>
@@ -1665,7 +1670,16 @@ export default function DashboardPage() {
                     const sensor = filteredSensors[topic];
                     if (!sensor) continue;
                     const dashboardSensor = filteredSensors[topic];
-                    const history = (dashboardSensor?.history || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    let history = (dashboardSensor?.history || []).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    if (reportIncludeOriginalPerSecond) {
+                      // Downsample to 1 value per second (first value per second)
+                      const perSecond: { [sec: string]: HistoryPoint } = {};
+                      for (const point of history) {
+                        const sec = point.timestamp.slice(0, 19); // 'YYYY-MM-DDTHH:MM:SS'
+                        if (!perSecond[sec]) perSecond[sec] = point;
+                      }
+                      history = Object.values(perSecond).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    }
                     for (const point of history) {
                       csv += `"${sensor.displayName}","${point.timestamp}",${point.value}\n`;
                     }
