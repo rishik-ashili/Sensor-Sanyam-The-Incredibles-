@@ -557,6 +557,15 @@ export default function DashboardPage() {
           description: `${sensor.displayName} is above threshold! Value: ${sensor.latestValue.toFixed(2)}${sensor.unit} (Threshold: ${sensor.threshold}${sensor.unit})`,
           variant: 'destructive',
           duration: 1000000,
+          onOpenChange: (open: boolean) => {
+            if (!open) {
+              // Remove from toastIdsRef and update thresholdAlertActive
+              Object.entries(toastIdsRef.current).forEach(([k, id]) => {
+                if (id === t.id) delete toastIdsRef.current[k];
+              });
+              setThresholdAlertActive(Object.keys(toastIdsRef.current).length > 0);
+            }
+          },
         });
         toastIdsRef.current[topic] = t.id;
       } else if (!above && existingId) {
