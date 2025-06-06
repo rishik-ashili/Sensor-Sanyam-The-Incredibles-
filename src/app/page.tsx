@@ -18,6 +18,7 @@ import {
   Legend as ChartJsLegend,
   TimeScale,
   BarElement,
+  BarController
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { format as formatDate, parseISO, subMinutes, isAfter } from 'date-fns';
@@ -44,7 +45,8 @@ ChartJS.register(
   ChartJsTooltip,
   ChartJsLegend,
   TimeScale,
-  BarElement
+  BarElement,
+  BarController
 );
 
 const MAX_HISTORY_POINTS_CLIENT = 50; // Max history points to keep on client if receiving rapidly before initial load
