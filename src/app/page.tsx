@@ -33,7 +33,7 @@ import { Slider } from '@/components/ui/slider';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { GoogleGenAI } from "@google/genai";
-import marked from 'marked';
+import { marked } from 'marked';
 
 ChartJS.register(
   CategoryScale,
