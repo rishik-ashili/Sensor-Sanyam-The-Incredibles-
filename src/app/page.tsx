@@ -2006,7 +2006,7 @@ export default function DashboardPage() {
                   <span style={{ fontWeight: m.role === 'ai' ? 600 : 400, color: m.role === 'ai' ? '#38bdf8' : '#fbbf24' }}>{m.role === 'ai' ? 'AI:' : 'You:'}</span>
                   <span style={{ marginLeft: 6 }}>
                     {m.role === 'ai' ? (
-                      <span dangerouslySetInnerHTML={{ __html: (typeof marked.parse === 'function' && marked.parse.constructor.name === 'AsyncFunction') ? await marked.parse(m.text) : marked.parse(m.text) }} />
+                      <span dangerouslySetInnerHTML={{ __html: String(marked.parse(m.text)) }} />
                     ) : (
                       m.text
                     )}
