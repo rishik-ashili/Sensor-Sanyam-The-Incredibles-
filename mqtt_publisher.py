@@ -118,6 +118,7 @@ for _ in range(5):
         if encrypted_payload:
             topic = f"{BASE_TOPIC}/{sensor['name']}"
             print(f"[PUBLISH] Sending to {topic}: {payload}")
+            print(f"[ENCRYPTED] {encrypted_payload}")
             client.publish(topic, encrypted_payload)
             
             # Prepare and encrypt energy payload
@@ -133,6 +134,7 @@ for _ in range(5):
             if encrypted_energy_payload:
                 energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
                 print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
+                print(f"[ENCRYPTED] {encrypted_energy_payload}")
                 client.publish(energy_topic, encrypted_energy_payload)
     time.sleep(0.2)  # 200ms between bursts
 print("[STARTUP] Initial burst publish complete.\n")
@@ -164,6 +166,7 @@ try:
                 if encrypted_payload:
                     topic = f"{BASE_TOPIC}/{sensor['name']}"
                     print(f"[PUBLISH] Sending to {topic}: {payload}")
+                    print(f"[ENCRYPTED] {encrypted_payload}")
                     client.publish(topic, encrypted_payload)
                 
                 # Prepare and encrypt energy payload
@@ -179,6 +182,7 @@ try:
                 if encrypted_energy_payload:
                     energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
                     print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
+                    print(f"[ENCRYPTED] {encrypted_energy_payload}")
                     client.publish(energy_topic, encrypted_energy_payload)
             time.sleep(1)
         else:
