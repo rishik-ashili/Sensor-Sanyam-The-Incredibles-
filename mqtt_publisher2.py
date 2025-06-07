@@ -3,11 +3,36 @@ import json
 import time
 import random
 from datetime import datetime
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad
+import base64
 
 # MQTT Configuration
 MQTT_BROKER = "broker.hivemq.com"
 MQTT_PORT = 1883
 BASE_TOPIC = "sensorflow/demo"
+
+# Encryption Configuration
+ENCRYPTION_KEY = b'your-32-byte-secret-key-here!!!!!'  # 32 bytes for AES-256
+IV = b'your-16-byte-iv!!'  # 16 bytes for AES
+
+def encrypt_data(data: dict) -> str:
+    """Encrypt the sensor data using AES-256-CBC."""
+    try:
+        # Convert dict to JSON string
+        json_data = json.dumps(data)
+        # Convert to bytes
+        data_bytes = json_data.encode('utf-8')
+        # Create cipher
+        cipher = AES.new(ENCRYPTION_KEY, AES.MODE_CBC, IV)
+        # Pad and encrypt
+        padded_data = pad(data_bytes, AES.block_size)
+        encrypted_data = cipher.encrypt(padded_data)
+        # Convert to base64 for MQTT transmission
+        return base64.b64encode(encrypted_data).decode('utf-8')
+    except Exception as e:
+        print(f"Encryption error: {e}")
+        return None
 
 # Create MQTT client
 client = mqtt.Client()
@@ -86,7 +111,7 @@ energy_values = [0.0 for _ in sensors]
 # Burst publish on startup to quickly populate backend buffer
 for _ in range(5):
     for i, sensor in enumerate(sensors):
-        # Publish sensor value
+        # Prepare sensor value payload
         value = current_values[i] * scale
         payload = {
             "value": round(value, 2),
@@ -96,19 +121,25 @@ for _ in range(5):
             "coordinates": {"lat": 28.7041, "lon": 77.1025},
             "threshold": sensor["threshold"]
         }
-        topic = f"{BASE_TOPIC}/{sensor['name']}"
-        client.publish(topic, json.dumps(payload))
-        # Publish per-sensor energy value
-        energy_values[i] += random.uniform(0.1, 1.0) * scale
-        energy_payload = {
-            "value": round(energy_values[i], 2),
-            "timestamp": datetime.utcnow().isoformat(),
-            "unit": "kWh",
-            "device": "rpi2",
-            "coordinates": {"lat": 28.7041, "lon": 77.1025}
-        }
-        energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
-        client.publish(energy_topic, json.dumps(energy_payload))
+        # Encrypt the payload
+        encrypted_payload = encrypt_data(payload)
+        if encrypted_payload:
+            topic = f"{BASE_TOPIC}/{sensor['name']}"
+            client.publish(topic, encrypted_payload)
+            
+            # Prepare and encrypt energy payload
+            energy_values[i] += random.uniform(0.1, 1.0) * scale
+            energy_payload = {
+                "value": round(energy_values[i], 2),
+                "timestamp": datetime.utcnow().isoformat(),
+                "unit": "kWh",
+                "device": "rpi2",
+                "coordinates": {"lat": 28.7041, "lon": 77.1025}
+            }
+            encrypted_energy_payload = encrypt_data(energy_payload)
+            if encrypted_energy_payload:
+                energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
+                client.publish(energy_topic, encrypted_energy_payload)
     time.sleep(0.2)  # 200ms between bursts
 
 # Subscribe to control topic
@@ -124,6 +155,8 @@ try:
                 delta = random.uniform(-0.5, 0.5)
                 current_values[i] = min(max(current_values[i] + delta, sensor["min"]), sensor["max"])
                 value = current_values[i] * scale
+                
+                # Prepare and encrypt sensor payload
                 payload = {
                     "value": round(value, 2),
                     "timestamp": datetime.utcnow().isoformat(),
@@ -132,9 +165,12 @@ try:
                     "coordinates": {"lat": 28.7041, "lon": 77.1025},
                     "threshold": sensor["threshold"]
                 }
-                topic = f"{BASE_TOPIC}/{sensor['name']}"
-                client.publish(topic, json.dumps(payload))
-                # Update and publish per-sensor energy value
+                encrypted_payload = encrypt_data(payload)
+                if encrypted_payload:
+                    topic = f"{BASE_TOPIC}/{sensor['name']}"
+                    client.publish(topic, encrypted_payload)
+                
+                # Prepare and encrypt energy payload
                 energy_values[i] += random.uniform(0.1, 1.0) * scale
                 energy_payload = {
                     "value": round(energy_values[i], 2),
@@ -143,11 +179,10 @@ try:
                     "device": "rpi2",
                     "coordinates": {"lat": 28.7041, "lon": 77.1025}
                 }
-                energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
-                client.publish(energy_topic, json.dumps(energy_payload))
-                print(f"Published to {topic}: {payload}")
-                print(f"Published to {energy_topic}: {energy_payload}")
-            # Wait for 1.5 seconds before next update
+                encrypted_energy_payload = encrypt_data(energy_payload)
+                if encrypted_energy_payload:
+                    energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
+                    client.publish(energy_topic, encrypted_energy_payload)
             time.sleep(1.5)
         else:
             time.sleep(0.2)  # Sleep briefly while paused

@@ -3,6 +3,7 @@ import type { Socket as NetSocket } from 'net';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { Server as IOServer, Socket } from 'socket.io';
 import mqtt from 'mqtt';
+import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 
 interface SocketServer extends HTTPServer {
   io?: IOServer;
@@ -22,6 +23,30 @@ const MQTT_TOPICS_SUBSCRIBE = [MQTT_BASE_TOPIC];
 
 const MAX_HISTORY_POINTS_PER_SENSOR = 300; // Approx 5 mins of data at 1s interval
 
+// Encryption Configuration
+const ENCRYPTION_KEY = Buffer.from('your-32-byte-secret-key-here!!!!!', 'utf-8'); // 32 bytes for AES-256
+const IV = Buffer.from('your-16-byte-iv!!', 'utf-8'); // 16 bytes for AES
+
+function decryptData(encryptedData: string): any {
+  try {
+    // Convert base64 to buffer
+    const encryptedBuffer = Buffer.from(encryptedData, 'base64');
+    // Create decipher
+    const decipher = createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
+    // Decrypt
+    const decryptedBuffer = Buffer.concat([
+      decipher.update(encryptedBuffer),
+      decipher.final()
+    ]);
+    // Convert to string and parse JSON
+    const decryptedString = decryptedBuffer.toString('utf-8');
+    return JSON.parse(decryptedString);
+  } catch (error) {
+    console.error('[SocketIO API] Decryption error:', error);
+    return null;
+  }
+}
+
 interface HistoryPoint {
   value: number;
   timestamp: string;
@@ -30,7 +55,7 @@ interface HistoryPoint {
 
 interface SensorDataEntry {
   history: HistoryPoint[];
-  currentUnit?: string;
+  currentUnit: string;
 }
 
 const sensorDataStore = new Map<string, SensorDataEntry>();
@@ -120,14 +145,19 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
         });
 
         mqttClient.on('message', (topic, message) => {
-          console.log(`[SocketIO API] Received MQTT message on ${topic}: ${message.toString()}`);
+          console.log(`[SocketIO API] Received MQTT message on ${topic}`);
           try {
-            const parsedPayload = JSON.parse(message.toString());
+            // Decrypt the message
+            const decryptedPayload = decryptData(message.toString());
+            if (!decryptedPayload) {
+              throw new Error('Failed to decrypt message');
+            }
+
             let finalPayload: Record<string, any> = {};
-            if (typeof parsedPayload === 'object' && parsedPayload !== null) {
-              finalPayload = { ...parsedPayload };
+            if (typeof decryptedPayload === 'object' && decryptedPayload !== null) {
+              finalPayload = { ...decryptedPayload };
             } else {
-              finalPayload = { value: parseFloat(parsedPayload) };
+              finalPayload = { value: parseFloat(decryptedPayload) };
             }
 
             if (typeof finalPayload.value === 'undefined' || finalPayload.value === null || isNaN(Number(finalPayload.value))) {
@@ -156,34 +186,13 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
             io.emit('sensor_data', { topic, payload: finalPayload });
           } catch (e) {
             const parseError = e instanceof Error ? e.message : String(e);
-            console.warn(`[SocketIO API] Failed to parse MQTT message as JSON from topic ${topic}: ${parseError}. Raw: "${message.toString()}". Attempting to treat as raw value.`);
-            const numericValue = parseFloat(message.toString());
-            if (!isNaN(numericValue)) {
-              const timestamp = new Date().toISOString();
-              const unit = 'N/A'; // Default unit for raw values
-              if (!sensorDataStore.has(topic)) {
-                sensorDataStore.set(topic, { history: [], currentUnit: unit });
-              }
-              const sensorEntry = sensorDataStore.get(topic)!;
-              sensorEntry.currentUnit = unit;
-              sensorEntry.history.push({ value: numericValue, timestamp });
-              if (sensorEntry.history.length > MAX_HISTORY_POINTS_PER_SENSOR) {
-                sensorEntry.history.splice(0, sensorEntry.history.length - MAX_HISTORY_POINTS_PER_SENSOR);
-              }
-              io.emit('sensor_data', {
-                topic,
-                payload: { value: numericValue, unit, timestamp }
-              });
-            } else {
-              console.error(`[SocketIO API] Message on topic ${topic} is not valid JSON and not a parseable number: "${message.toString()}"`);
-              io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Invalid format (not JSON or number): ${parseError}` });
-            }
+            console.warn(`[SocketIO API] Failed to process MQTT message from topic ${topic}: ${parseError}. Raw: "${message.toString()}".`);
+            io.emit('sensor_data_error', { topic, rawMessage: message.toString(), error: `Processing error: ${parseError}` });
           }
         });
-      } else {
-        console.log('[SocketIO API] MQTT client already initialized. State:',
-          mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
       }
+      console.log('[SocketIO API] MQTT client already initialized. State:',
+        mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
 
       io.on('connection', (socket: Socket) => {
         console.log('[SocketIO API] Socket.IO client connected:', socket.id);
@@ -221,14 +230,8 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
     res.end();
 
   } catch (error) {
-    const errMessage = error instanceof Error ? error.message : String(error);
-    console.error('[SocketIO API] Critical error in socketIOHandler:', errMessage, error);
-    if (!res.headersSent) {
-      res.status(500).json({ message: 'Internal Server Error during Socket.IO setup', error: errMessage });
-    } else {
-      console.error('[SocketIO API] Headers already sent, cannot send 500 response for error:', errMessage);
-      res.end();
-    }
+    console.error('[SocketIO API] Error in HTTP handler:', error);
+    res.status(500).json({ message: 'Internal Server Error' });
   }
 };
 
