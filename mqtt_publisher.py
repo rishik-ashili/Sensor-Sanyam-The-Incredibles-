@@ -44,6 +44,10 @@ scale = 1.0
 def on_connect(client, userdata, flags, rc):
     print(f"Connected with result code {rc}")
 
+def on_publish(client, userdata, mid):
+    """Callback when a message is published."""
+    print(f"[PUBLISH] Message {mid} published successfully")
+
 def on_control(client, userdata, msg):
     global enabled, scale
     try:
@@ -59,6 +63,7 @@ def on_control(client, userdata, msg):
 
 # Connect to broker
 client.on_connect = on_connect
+client.on_publish = on_publish
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
 
 # Start the network loop
@@ -95,6 +100,7 @@ current_values = [random.uniform(sensor["min"], sensor["max"]) for sensor in sen
 energy_values = [0.0 for _ in sensors]
 
 # Burst publish on startup to quickly populate backend buffer
+print("\n[STARTUP] Beginning initial burst publish...")
 for _ in range(5):
     for i, sensor in enumerate(sensors):
         # Prepare sensor value payload
@@ -111,6 +117,7 @@ for _ in range(5):
         encrypted_payload = encrypt_data(payload)
         if encrypted_payload:
             topic = f"{BASE_TOPIC}/{sensor['name']}"
+            print(f"[PUBLISH] Sending to {topic}: {payload}")
             client.publish(topic, encrypted_payload)
             
             # Prepare and encrypt energy payload
@@ -125,8 +132,10 @@ for _ in range(5):
             encrypted_energy_payload = encrypt_data(energy_payload)
             if encrypted_energy_payload:
                 energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
+                print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                 client.publish(energy_topic, encrypted_energy_payload)
     time.sleep(0.2)  # 200ms between bursts
+print("[STARTUP] Initial burst publish complete.\n")
 
 # Subscribe to control topic
 control_topic = f"{BASE_TOPIC}/rpi1/control"
@@ -154,6 +163,7 @@ try:
                 encrypted_payload = encrypt_data(payload)
                 if encrypted_payload:
                     topic = f"{BASE_TOPIC}/{sensor['name']}"
+                    print(f"[PUBLISH] Sending to {topic}: {payload}")
                     client.publish(topic, encrypted_payload)
                 
                 # Prepare and encrypt energy payload
@@ -168,6 +178,7 @@ try:
                 encrypted_energy_payload = encrypt_data(energy_payload)
                 if encrypted_energy_payload:
                     energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
+                    print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                     client.publish(energy_topic, encrypted_energy_payload)
             time.sleep(1)
         else:
