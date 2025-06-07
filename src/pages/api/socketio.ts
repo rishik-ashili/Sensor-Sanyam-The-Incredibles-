@@ -24,8 +24,8 @@ const MQTT_TOPICS_SUBSCRIBE = [MQTT_BASE_TOPIC];
 const MAX_HISTORY_POINTS_PER_SENSOR = 300; // Approx 5 mins of data at 1s interval
 
 // Encryption Configuration
-const ENCRYPTION_KEY = Buffer.from('your-32-byte-secret-key-here!!!!!', 'utf-8'); // 32 bytes for AES-256
-const IV = Buffer.from('your-16-byte-iv!!', 'utf-8'); // 16 bytes for AES
+const ENCRYPTION_KEY = Buffer.from('12345678901234567890123456789012', 'utf-8'); // Exactly 32 bytes for AES-256
+const IV = Buffer.from('1234567890123456', 'utf-8'); // Exactly 16 bytes for AES
 
 function decryptData(encryptedData: string): any {
   try {

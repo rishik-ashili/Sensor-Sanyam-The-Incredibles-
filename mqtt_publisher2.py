@@ -13,8 +13,8 @@ MQTT_PORT = 1883
 BASE_TOPIC = "sensorflow/demo"
 
 # Encryption Configuration
-ENCRYPTION_KEY = b'your-32-byte-secret-key-here!!!!!'  # 32 bytes for AES-256
-IV = b'your-16-byte-iv!!'  # 16 bytes for AES
+ENCRYPTION_KEY = b'12345678901234567890123456789012'  # Exactly 32 bytes for AES-256
+IV = b'1234567890123456'  # Exactly 16 bytes for AES
 
 def encrypt_data(data: dict) -> str:
     """Encrypt the sensor data using AES-256-CBC."""
