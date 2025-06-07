@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { GoogleGenAI } from "@google/genai";
 import { marked } from 'marked';
+import { AuthProvider, useAuth } from './AuthContext';
+import AuthPage from './AuthPage';
 
 ChartJS.register(
   CategoryScale,
@@ -262,7 +264,7 @@ const ThresholdDashboard = ({ sensors }: { sensors: SensorsState }) => {
   );
 };
 
-export default function DashboardPage() {
+function DashboardPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
   const [backendApiStatusMessage, setBackendApiStatusMessage] = useState<string>('Checking API status...');
@@ -1422,7 +1424,7 @@ export default function DashboardPage() {
                     const min = values.length ? Math.min(...values) : null;
                     const avg = values.length ? (values.reduce((a, b) => a + b, 0) / values.length) : null;
                     const median = values.length ? [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] : null;
-                    const stddev = values.length ? Math.sqrt(values.reduce((a, b) => a + Math.pow(b - avg, 2), 0) / values.length) : null;
+                    const stddev = values.length ? Math.sqrt(values.reduce((a, b) => a + Math.pow(b - (avg ?? 0), 2), 0) / values.length) : null;
                     // Rolling averages
                     function rollingAvg(arr: number[], window: number): (number | null)[] {
                       if (arr.length < window) return [];
@@ -2031,5 +2033,45 @@ export default function DashboardPage() {
         </div>
       )}
     </div>
+  );
+}
+
+function DashboardWithAuth() {
+  const { user, logout } = useAuth();
+  const [showLoading, setShowLoading] = React.useState(false);
+  React.useEffect(() => {
+    if (user) {
+      setShowLoading(true);
+      const t = setTimeout(() => setShowLoading(false), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [user]);
+
+  if (!user) return <AuthPage />;
+  if (showLoading) return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80">
+      <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-indigo-500 border-solid"></div>
+      <span className="ml-4 text-xl text-indigo-700 font-semibold">Loading dashboard...</span>
+    </div>
+  );
+  return (
+    <div>
+      <div className="fixed top-4 right-4 z-50">
+        <button
+          onClick={logout}
+          className="px-4 py-2 rounded-lg bg-indigo-100 text-indigo-700 font-semibold shadow hover:bg-indigo-200 transition"
+        >Logout</button>
+      </div>
+      {/* DashboardPage below is your existing dashboard code */}
+      <DashboardPage />
+    </div>
+  );
+}
+
+export default function AppEntry() {
+  return (
+    <AuthProvider>
+      <DashboardWithAuth />
+    </AuthProvider>
   );
 }
