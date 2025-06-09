@@ -12,14 +12,15 @@ const IV = Buffer.from('1234567890123456', 'utf-8');
 // Keep a single MQTT client instance
 let client: mqtt.MqttClient | null = null;
 let isConnecting = false;
+let connectionPromise: Promise<mqtt.MqttClient> | null = null;
 
 async function getClient(): Promise<mqtt.MqttClient> {
     if (client && client.connected) {
         return client;
     }
 
-    if (isConnecting) {
-        throw new Error('MQTT client is already connecting');
+    if (isConnecting && connectionPromise) {
+        return connectionPromise;
     }
 
     isConnecting = true;
@@ -37,15 +38,17 @@ async function getClient(): Promise<mqtt.MqttClient> {
             reconnectPeriod: 1000,
         });
 
-        return new Promise<mqtt.MqttClient>((resolve, reject) => {
+        connectionPromise = new Promise<mqtt.MqttClient>((resolve, reject) => {
             const timeout = setTimeout(() => {
                 isConnecting = false;
+                connectionPromise = null;
                 reject(new Error('MQTT connection timeout'));
             }, 5000);
 
             client!.on('connect', () => {
                 clearTimeout(timeout);
                 isConnecting = false;
+                connectionPromise = null;
                 console.log('[Sensor Data API] Connected to MQTT broker');
                 resolve(client!);
             });
@@ -53,12 +56,22 @@ async function getClient(): Promise<mqtt.MqttClient> {
             client!.on('error', (err) => {
                 clearTimeout(timeout);
                 isConnecting = false;
+                connectionPromise = null;
                 console.error('[Sensor Data API] MQTT error:', err);
                 reject(err);
             });
+
+            client!.on('close', () => {
+                console.log('[Sensor Data API] MQTT connection closed');
+                isConnecting = false;
+                connectionPromise = null;
+            });
         });
+
+        return connectionPromise;
     } catch (error) {
         isConnecting = false;
+        connectionPromise = null;
         console.error('[Sensor Data API] Failed to create MQTT client:', error);
         throw error;
     }

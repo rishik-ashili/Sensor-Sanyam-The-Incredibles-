@@ -7,10 +7,14 @@ import random
 from datetime import datetime
 import sys
 import socket
+import urllib3
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # API Configuration
 API_ENDPOINT = "http://localhost:9003/api/sensor-data"
-MAX_RETRIES = 5
+MAX_RETRIES = 10  # Increased retries
 RETRY_DELAY = 2  # seconds
 
 def check_server_availability():
@@ -23,7 +27,9 @@ def check_server_availability():
         sock.close()
         
         if result == 0:
-            return True
+            # Try a simple HTTP request to verify the API is responding
+            response = requests.get("http://localhost:9003", timeout=2)
+            return response.status_code < 500
         return False
     except:
         return False
@@ -41,9 +47,10 @@ def wait_for_server():
 
 # Configure retry strategy
 retry_strategy = Retry(
-    total=3,  # number of retries
-    backoff_factor=1,  # wait 1, 2, 4 seconds between retries
-    status_forcelist=[500, 502, 503, 504]  # HTTP status codes to retry on
+    total=5,  # Increased retries
+    backoff_factor=1,
+    status_forcelist=[500, 502, 503, 504],
+    allowed_methods=["POST", "GET"]
 )
 adapter = HTTPAdapter(max_retries=retry_strategy)
 session = requests.Session()
@@ -108,14 +115,14 @@ def send_sensor_data(sensor_index: int, value: float, energy: float):
             "timestamp": datetime.utcnow().isoformat(),
             "unit": sensor["unit"],
             "device": "rpi3",
-            "coordinates": {"lat": 19.0760, "lon": 72.8777},  # Mumbai coordinates
+            "coordinates": {"lat": 19.0760, "lon": 72.8777},
             "threshold": sensor["threshold"],
             "energy": round(energy, 2)
         }
         
         print(f"[DEBUG] Attempting to send data for {sensor['name']}: {payload}")
         
-        response = session.post(API_ENDPOINT, json=payload, timeout=5)
+        response = session.post(API_ENDPOINT, json=payload, timeout=5, verify=False)
         response.raise_for_status()
         
         result = response.json()

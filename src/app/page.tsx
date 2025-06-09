@@ -6,21 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, Loader2, LineChart as LineChartIcon, Info, Clock, ChevronDown, XCircle, Bookmark, Circle, Bell, BellOff, Sun, Moon, Palette, MapPin } from 'lucide-react';
-import { Line } from 'react-chartjs-2';
-import { Bar } from 'react-chartjs-2';
+import { Line, Bar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   PointElement,
   LineElement,
-  Title as ChartJsTitle,
-  Tooltip as ChartJsTooltip,
-  Legend as ChartJsLegend,
-  TimeScale,
   BarElement,
-  BarController,
-  ScatterController
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { format as formatDate, parseISO, subMinutes, isAfter } from 'date-fns';
@@ -45,13 +42,11 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
-  ChartJsTitle,
-  ChartJsTooltip,
-  ChartJsLegend,
-  TimeScale,
   BarElement,
-  BarController,
-  ScatterController
+  Title,
+  Tooltip,
+  Legend,
+  Filler
 );
 
 const MAX_HISTORY_POINTS_CLIENT = 50; // Max history points to keep on client if receiving rapidly before initial load
@@ -1544,8 +1539,25 @@ function DashboardPage() {
                               <div className="mb-4">
                                 <span className="font-semibold">Hourly Averages:</span>
                                 <div className="h-32 w-full">
-                                  <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
-                                    data={{ labels: hourly.map(h => h.hour), datasets: [{ label: 'Hourly Avg', data: hourly.map(h => h.avg), backgroundColor: '#818cf8', borderColor: '#6366f1', borderWidth: 2, type: 'bar' }] }} />
+                                  <Bar
+                                    options={{
+                                      ...chartOptions,
+                                      plugins: {
+                                        ...chartOptions.plugins,
+                                        legend: { display: false }
+                                      }
+                                    }}
+                                    data={{
+                                      labels: hourly.map(h => h.hour),
+                                      datasets: [{
+                                        label: 'Hourly Avg',
+                                        data: hourly.map(h => h.avg),
+                                        backgroundColor: '#818cf8',
+                                        borderColor: '#6366f1',
+                                        borderWidth: 2
+                                      }]
+                                    }}
+                                  />
                                 </div>
                               </div>
                             )}
