@@ -116,23 +116,23 @@ for _ in range(5):
         # Encrypt the payload
         encrypted_payload = encrypt_data(payload)
         if encrypted_payload:
-        topic = f"{BASE_TOPIC}/{sensor['name']}"
+            topic = f"{BASE_TOPIC}/{sensor['name']}"
             print(f"[PUBLISH] Sending to {topic}: {payload}")
             print(f"[ENCRYPTED] {encrypted_payload}")
             client.publish(topic, encrypted_payload)
             
             # Prepare and encrypt energy payload
             energy_values[i] += random.uniform(0.1, 1.0) * scale
-        energy_payload = {
-            "value": round(energy_values[i], 2),
-            "timestamp": datetime.utcnow().isoformat(),
-            "unit": "kWh",
-            "device": "rpi1",
-            "coordinates": {"lat": 12.9716, "lon": 77.5946}
-        }
+            energy_payload = {
+                "value": round(energy_values[i], 2),
+                "timestamp": datetime.utcnow().isoformat(),
+                "unit": "kWh",
+                "device": "rpi1",
+                "coordinates": {"lat": 12.9716, "lon": 77.5946}
+            }
             encrypted_energy_payload = encrypt_data(energy_payload)
             if encrypted_energy_payload:
-        energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
+                energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
                 print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                 print(f"[ENCRYPTED] {encrypted_energy_payload}")
                 client.publish(energy_topic, encrypted_energy_payload)
@@ -147,44 +147,44 @@ client.message_callback_add(control_topic, on_control)
 try:
     while True:
         if enabled:
-        for i, sensor in enumerate(sensors):
-            # Update sensor value
-            delta = random.uniform(-0.5, 0.5)
-            current_values[i] = min(max(current_values[i] + delta, sensor["min"]), sensor["max"])
+            for i, sensor in enumerate(sensors):
+                # Update sensor value
+                delta = random.uniform(-0.5, 0.5)
+                current_values[i] = min(max(current_values[i] + delta, sensor["min"]), sensor["max"])
                 value = current_values[i] * scale
                 
                 # Prepare and encrypt sensor payload
-            payload = {
-                "value": round(value, 2),
-                "timestamp": datetime.utcnow().isoformat(),
-                "unit": sensor["unit"],
-                "device": "rpi1",
+                payload = {
+                    "value": round(value, 2),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "unit": sensor["unit"],
+                    "device": "rpi1",
                     "coordinates": {"lat": 12.9716, "lon": 77.5946},
                     "threshold": sensor["threshold"]
-            }
+                }
                 encrypted_payload = encrypt_data(payload)
                 if encrypted_payload:
-            topic = f"{BASE_TOPIC}/{sensor['name']}"
+                    topic = f"{BASE_TOPIC}/{sensor['name']}"
                     print(f"[PUBLISH] Sending to {topic}: {payload}")
                     print(f"[ENCRYPTED] {encrypted_payload}")
                     client.publish(topic, encrypted_payload)
                 
                 # Prepare and encrypt energy payload
                 energy_values[i] += random.uniform(0.1, 1.0) * scale
-            energy_payload = {
-                "value": round(energy_values[i], 2),
-                "timestamp": datetime.utcnow().isoformat(),
-                "unit": "kWh",
-                "device": "rpi1",
-                "coordinates": {"lat": 12.9716, "lon": 77.5946}
-            }
+                energy_payload = {
+                    "value": round(energy_values[i], 2),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "unit": "kWh",
+                    "device": "rpi1",
+                    "coordinates": {"lat": 12.9716, "lon": 77.5946}
+                }
                 encrypted_energy_payload = encrypt_data(energy_payload)
                 if encrypted_energy_payload:
-            energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
+                    energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
                     print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                     print(f"[ENCRYPTED] {encrypted_energy_payload}")
                     client.publish(energy_topic, encrypted_energy_payload)
-        time.sleep(1)
+            time.sleep(1)
         else:
             time.sleep(0.2)  # Sleep briefly while paused
 
