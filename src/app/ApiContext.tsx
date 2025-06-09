@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 
 interface ApiSensorData {
     value: number;
@@ -25,14 +25,23 @@ interface ApiContextType {
 const ApiContext = createContext<ApiContextType | undefined>(undefined);
 
 const POLLING_INTERVAL = 5000; // 5 seconds
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 3000; // 3 seconds
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const CONNECTION_TIMEOUT = 10000; // 10 seconds
 
 export function ApiProvider({ children }: { children: React.ReactNode }) {
     const [sensors, setSensors] = useState<Record<string, ApiSensorData[]>>({});
     const [deviceStates, setDeviceStates] = useState<Record<string, ApiDeviceState>>({});
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [ws, setWs] = useState<WebSocket | null>(null);
     const [usePolling, setUsePolling] = useState(false);
+    const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
+    const wsRef = useRef<WebSocket | null>(null);
+    const heartbeatIntervalRef = useRef<NodeJS.Timeout>();
+    const reconnectTimeoutRef = useRef<NodeJS.Timeout>();
+    const connectionTimeoutRef = useRef<NodeJS.Timeout>();
 
     const fetchData = useCallback(async () => {
         try {
@@ -50,24 +59,84 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
+    const cleanupWebSocket = useCallback(() => {
+        if (wsRef.current) {
+            wsRef.current.close(1000, 'Cleanup');
+            wsRef.current = null;
+        }
+        if (heartbeatIntervalRef.current) {
+            clearInterval(heartbeatIntervalRef.current);
+        }
+        if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current);
+        }
+        if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+        }
+    }, []);
+
     const connectWebSocket = useCallback(() => {
+        cleanupWebSocket();
+
         try {
-            // Use relative WebSocket URL
-            const wsUrl = `ws://${window.location.hostname}:3001`;
+            // Determine if we're on HTTPS
+            const isSecure = window.location.protocol === 'https:';
+            const wsProtocol = isSecure ? 'wss' : 'ws';
+
+            // Use relative WebSocket URL with appropriate protocol and path
+            const wsUrl = `${wsProtocol}://${window.location.hostname}:3001/ws`;
+            console.log('Connecting to WebSocket:', wsUrl);
+
             const wsInstance = new WebSocket(wsUrl);
+            wsRef.current = wsInstance;
+
+            // Set connection timeout
+            connectionTimeoutRef.current = setTimeout(() => {
+                if (wsInstance.readyState !== WebSocket.OPEN) {
+                    console.log('WebSocket connection timeout');
+                    wsInstance.close();
+                    setUsePolling(true);
+                }
+            }, CONNECTION_TIMEOUT);
 
             wsInstance.onopen = () => {
                 console.log('API WebSocket connected');
                 setIsConnected(true);
                 setError(null);
                 setUsePolling(false);
+                setReconnectAttempts(0);
+
+                // Clear connection timeout
+                if (connectionTimeoutRef.current) {
+                    clearTimeout(connectionTimeoutRef.current);
+                }
+
+                // Start heartbeat
+                heartbeatIntervalRef.current = setInterval(() => {
+                    if (wsInstance.readyState === WebSocket.OPEN) {
+                        wsInstance.send(JSON.stringify({ type: 'ping' }));
+                    }
+                }, HEARTBEAT_INTERVAL);
             };
 
-            wsInstance.onclose = () => {
-                console.log('API WebSocket disconnected');
+            wsInstance.onclose = (event) => {
+                console.log('API WebSocket disconnected:', event.code, event.reason);
                 setIsConnected(false);
                 setError('Disconnected from API server');
                 setUsePolling(true);
+
+                // Clear connection timeout
+                if (connectionTimeoutRef.current) {
+                    clearTimeout(connectionTimeoutRef.current);
+                }
+
+                // Attempt to reconnect if not closed cleanly
+                if (event.code !== 1000 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectTimeoutRef.current = setTimeout(() => {
+                        setReconnectAttempts(prev => prev + 1);
+                        connectWebSocket();
+                    }, RECONNECT_DELAY);
+                }
             };
 
             wsInstance.onerror = (event) => {
@@ -79,6 +148,12 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
             wsInstance.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+
+                    // Handle heartbeat response
+                    if (data.type === 'pong') {
+                        return;
+                    }
+
                     switch (data.type) {
                         case 'initial_data':
                             setSensors(data.sensors || {});
@@ -110,33 +185,33 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
                     console.error('Error processing WebSocket message:', e);
                 }
             };
-
-            setWs(wsInstance);
         } catch (e) {
             console.error('Error creating WebSocket connection:', e);
             setError('Failed to create WebSocket connection');
             setUsePolling(true);
         }
-    }, []);
+    }, [reconnectAttempts, cleanupWebSocket]);
 
     useEffect(() => {
+        // Start with polling immediately
+        setUsePolling(true);
+        fetchData();
+
+        // Try WebSocket connection
         connectWebSocket();
 
-        // Set up polling if WebSocket fails
-        let pollingInterval: NodeJS.Timeout;
-        if (usePolling) {
-            pollingInterval = setInterval(fetchData, POLLING_INTERVAL);
-        }
+        // Set up polling interval
+        const pollingInterval = setInterval(() => {
+            if (usePolling) {
+                fetchData();
+            }
+        }, POLLING_INTERVAL);
 
         return () => {
-            if (ws) {
-                ws.close();
-            }
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-            }
+            cleanupWebSocket();
+            clearInterval(pollingInterval);
         };
-    }, [connectWebSocket, usePolling, fetchData]);
+    }, [connectWebSocket, usePolling, fetchData, cleanupWebSocket]);
 
     const sendControl = async (device: string, enabled?: boolean, scale?: number) => {
         try {
