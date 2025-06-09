@@ -99,6 +99,7 @@ interface SensorDisplayData {
   device?: string;
   coordinates?: { lat: number; lon: number };
   threshold?: number;  // Add threshold to interface
+  connectionType?: 'local' | 'api' | 'custom-mqtt';
 }
 
 interface SensorsState {
@@ -262,6 +263,18 @@ const ThresholdDashboard = ({ sensors }: { sensors: SensorsState }) => {
     </Card>
   );
 };
+
+// Helper: get allowed device names (default + custom)
+function getAllowedDevices() {
+  const defaultDevices = ['rpi1', 'rpi2', 'rpi3'];
+  let customDevices: string[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      customDevices = JSON.parse(localStorage.getItem('customDevices') || '[]').map((d: any) => d.name);
+    } catch { }
+  }
+  return [...defaultDevices, ...customDevices];
+}
 
 function DashboardPage() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -443,6 +456,10 @@ function DashboardPage() {
 
     newSocket.on('sensor_data', (data: SensorDataEvent) => {
       setLastSensorError(null);
+      // Only allow sensor data for allowed devices
+      const allowedDevices = getAllowedDevices();
+      const device = (data.payload as any).device || 'Unknown';
+      if (!allowedDevices.includes(device)) return;
       setSensors((prevSensors: SensorsState) => {
         const existingSensor = prevSensors[data.topic];
         let unit = data.payload.unit || existingSensor?.unit || 'N/A';
@@ -466,7 +483,7 @@ function DashboardPage() {
             topic: data.topic,
             displayName: existingSensor?.displayName || formatTopicName(data.topic),
             lastUpdateTimestamp: data.payload.timestamp,
-            device: (data.payload as any).device || existingSensor?.device || 'Unknown',
+            device: device,
             coordinates: (data.payload as any).coordinates || existingSensor?.coordinates,
             threshold: (data.payload as any).threshold || existingSensor?.threshold,
           },
@@ -755,15 +772,25 @@ function DashboardPage() {
   // Helper: get all device names from live data
   const liveDeviceNames = useMemo(() => Object.keys(sensorsByDevice), [sensorsByDevice]);
 
-  // Helper: get all device names to show (union of saved and live)
-  const allDeviceNames = useMemo(() => {
-    const set = new Set([...savedDevices, ...liveDeviceNames]);
-    return Array.from(set);
-  }, [savedDevices, liveDeviceNames]);
+  // Helper: get allowed device names (default + custom)
+  function getAllowedDevices() {
+    const defaultDevices = ['rpi1', 'rpi2', 'rpi3'];
+    let customDevices: string[] = [];
+    if (typeof window !== 'undefined') {
+      try {
+        customDevices = JSON.parse(localStorage.getItem('customDevices') || '[]').map((d: any) => d.name);
+      } catch { }
+    }
+    return [...defaultDevices, ...customDevices];
+  }
 
-  // Helper: is device online? (now also checks if enabled)
+  // Helper: get all device names to show (union of default and custom)
+  const allDeviceNames = useMemo(() => getAllowedDevices(), [forceUpdate]);
+
+  // Helper: is device online? (now also checks if enabled and is allowed)
   const isDeviceOnline = (device: string) => {
-    return deviceEnabled[device] !== false && liveDeviceNames.includes(device);
+    const allowed = getAllowedDevices();
+    return deviceEnabled[device] !== false && liveDeviceNames.includes(device) && allowed.includes(device);
   };
 
   // Helper: get sensors for a device (empty array if offline)
@@ -970,6 +997,22 @@ function DashboardPage() {
     }
     setAiChatLoading(false);
   }
+
+  useEffect(() => {
+    function handleStorageChange(e: StorageEvent) {
+      if (e.key === 'customDevices') {
+        const customDevices = JSON.parse(e.newValue || '[]');
+        const allowedDevices = new Set([...(customDevices.map((cd: any) => cd.name)), 'rpi1', 'rpi2', 'rpi3']);
+        setSavedDevices((prev) => prev.filter((d) => allowedDevices.has(d)));
+        setSensors((prevSensors) => {
+          // Remove all sensors for devices not in allowedDevices
+          return Object.fromEntries(Object.entries(prevSensors).filter(([_, sensor]) => allowedDevices.has(sensor.device || '')));
+        });
+      }
+    }
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -1178,6 +1221,16 @@ function DashboardPage() {
                     {coords && (
                       <span className="ml-2 text-xs text-muted-foreground">({coords.lat}, {coords.lon})</span>
                     )}
+                    {/* Connection type tag */}
+                    {(() => {
+                      const deviceSensors = getDeviceSensors(device);
+                      const connectionType = deviceSensors[0]?.connectionType ||
+                        (device === 'rpi1' || device === 'rpi2' ? 'local' : device === 'rpi3' ? 'api' : 'custom-mqtt');
+                      if (connectionType === 'local') return <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">Local</span>;
+                      if (connectionType === 'api') return <span className="ml-2 text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded">API</span>;
+                      if (connectionType === 'custom-mqtt') return <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Custom MQTT</span>;
+                      return null;
+                    })()}
                     <Switch
                       checked={enabled}
                       onCheckedChange={checked => setDevicePublisher(device, checked)}

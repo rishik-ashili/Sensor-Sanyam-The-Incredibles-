@@ -4,13 +4,14 @@ import mqtt from 'mqtt';
 const MQTT_BROKER = 'mqtt://broker.hivemq.com:1883';
 const BASE_TOPIC = 'sensorflow/demo';
 
-// Keep a single MQTT client instance
-let client: mqtt.MqttClient | null = null;
-function getClient() {
-    if (!client) {
-        client = mqtt.connect(MQTT_BROKER);
+// Keep MQTT clients for different brokers
+const clients: { [broker: string]: mqtt.MqttClient } = {};
+
+function getClient(broker: string) {
+    if (!clients[broker]) {
+        clients[broker] = mqtt.connect(broker);
     }
-    return client;
+    return clients[broker];
 }
 
 export async function POST(req: NextRequest) {
@@ -23,6 +24,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Missing device parameter' }, { status: 400 });
     }
 
+    // Check if this is a custom MQTT device
+    const customDevices = JSON.parse(localStorage.getItem('customDevices') || '[]');
+    const customDevice = customDevices.find((d: any) => d.name === device);
+
+    const broker = customDevice ? customDevice.broker : MQTT_BROKER;
     const topic = `${BASE_TOPIC}/${device}/control`;
     const payloadObj: any = {};
 
@@ -33,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     try {
         await new Promise<void>((resolve, reject) => {
-            getClient().publish(topic, payload, {}, (err) => {
+            getClient(broker).publish(topic, payload, {}, (err) => {
                 if (err) reject(err);
                 else resolve();
             });
