@@ -24,11 +24,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Missing device parameter' }, { status: 400 });
     }
 
-    // Check if this is a custom MQTT device
-    const customDevices = JSON.parse(localStorage.getItem('customDevices') || '[]');
-    const customDevice = customDevices.find((d: any) => d.name === device);
-
-    const broker = customDevice ? customDevice.broker : MQTT_BROKER;
+    // Use default broker for rpi1 and rpi2, otherwise use the provided broker
+    const broker = MQTT_BROKER;
     const topic = `${BASE_TOPIC}/${device}/control`;
     const payloadObj: any = {};
 

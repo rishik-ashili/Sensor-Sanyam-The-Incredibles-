@@ -34,15 +34,28 @@ def encrypt_data(data: dict) -> str:
         print(f"Encryption error: {e}")
         return None
 
-# Create MQTT client
-client = mqtt.Client()
+# Create MQTT client with a unique client ID
+client = mqtt.Client(client_id=f"rpi1_publisher_{random.randint(0, 1000)}")
 
 # Add global enabled flag and scale
 enabled = True
 scale = 1.0
 
 def on_connect(client, userdata, flags, rc):
-    print(f"Connected with result code {rc}")
+    print(f"[CONNECT] Connected with result code {rc}")
+    if rc == 0:
+        print("[CONNECT] Successfully connected to MQTT broker")
+        # Resubscribe to control topic on reconnect
+        control_topic = f"{BASE_TOPIC}/rpi1/control"
+        client.subscribe(control_topic)
+        print(f"[CONNECT] Subscribed to control topic: {control_topic}")
+    else:
+        print(f"[CONNECT] Failed to connect, return code {rc}")
+
+def on_disconnect(client, userdata, rc):
+    print(f"[DISCONNECT] Disconnected with result code {rc}")
+    if rc != 0:
+        print("[DISCONNECT] Unexpected disconnection. Attempting to reconnect...")
 
 def on_publish(client, userdata, mid):
     """Callback when a message is published."""
@@ -51,19 +64,27 @@ def on_publish(client, userdata, mid):
 def on_control(client, userdata, msg):
     global enabled, scale
     try:
+        print(f"[CONTROL] Received control message: {msg.payload.decode()}")
         payload = json.loads(msg.payload.decode())
         if 'enabled' in payload:
             enabled = bool(payload['enabled'])
             print(f"[CONTROL] Publishing {'enabled' if enabled else 'disabled'} via control topic.")
         if 'scale' in payload:
+            old_scale = scale
             scale = float(payload['scale'])
-            print(f"[CONTROL] Scale set to {scale}")
+            print(f"[CONTROL] Scale changed from {old_scale} to {scale}")
+    except json.JSONDecodeError as e:
+        print(f"[CONTROL] Error decoding JSON: {e}")
     except Exception as e:
-        print(f"[CONTROL] Error parsing control message: {e}")
+        print(f"[CONTROL] Error processing control message: {e}")
 
-# Connect to broker
+# Set up callbacks
 client.on_connect = on_connect
+client.on_disconnect = on_disconnect
 client.on_publish = on_publish
+
+# Connect to broker with clean session
+print("[STARTUP] Connecting to MQTT broker...")
 client.connect(MQTT_BROKER, MQTT_PORT, 60)
 
 # Start the network loop
@@ -143,6 +164,7 @@ print("[STARTUP] Initial burst publish complete.\n")
 control_topic = f"{BASE_TOPIC}/rpi1/control"
 client.subscribe(control_topic)
 client.message_callback_add(control_topic, on_control)
+print(f"[STARTUP] Subscribed to control topic: {control_topic}")
 
 try:
     while True:
