@@ -32,65 +32,91 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
     const [ws, setWs] = useState<WebSocket | null>(null);
 
     useEffect(() => {
-        const websocket = new WebSocket('ws://localhost:3001');
+        let wsInstance: WebSocket | null = null;
+        let reconnectTimeout: NodeJS.Timeout;
 
-        websocket.onopen = () => {
-            console.log('API WebSocket connected');
-            setIsConnected(true);
-            setError(null);
-        };
-
-        websocket.onclose = () => {
-            console.log('API WebSocket disconnected');
-            setIsConnected(false);
-            setError('Disconnected from API server');
-        };
-
-        websocket.onerror = (event) => {
-            console.error('API WebSocket error:', event);
-            setError('WebSocket error occurred');
-        };
-
-        websocket.onmessage = (event) => {
+        const connect = () => {
             try {
-                const data = JSON.parse(event.data);
+                // Use secure WebSocket if the page is served over HTTPS
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.hostname}:3001`;
 
-                switch (data.type) {
-                    case 'initial_data':
-                        setSensors(data.sensors);
-                        setDeviceStates(data.deviceStates);
-                        break;
-                    case 'sensor_update':
-                        setSensors(prev => ({
-                            ...prev,
-                            [data.sensor]: [...(prev[data.sensor] || []), data.data]
-                        }));
-                        break;
-                    case 'device_control':
-                        setDeviceStates(prev => ({
-                            ...prev,
-                            [data.device]: data.state
-                        }));
-                        break;
-                    case 'threshold_update':
-                        setSensors(prev => ({
-                            ...prev,
-                            [data.sensor]: (prev[data.sensor] || []).map(point => ({
-                                ...point,
-                                threshold: data.threshold
-                            }))
-                        }));
-                        break;
-                }
+                wsInstance = new WebSocket(wsUrl);
+
+                wsInstance.onopen = () => {
+                    console.log('API WebSocket connected');
+                    setIsConnected(true);
+                    setError(null);
+                };
+
+                wsInstance.onclose = () => {
+                    console.log('API WebSocket disconnected');
+                    setIsConnected(false);
+                    setError('Disconnected from API server');
+
+                    // Attempt to reconnect after 5 seconds
+                    reconnectTimeout = setTimeout(connect, 5000);
+                };
+
+                wsInstance.onerror = (event) => {
+                    console.error('API WebSocket error:', event);
+                    setError('WebSocket error occurred');
+                };
+
+                wsInstance.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+
+                        switch (data.type) {
+                            case 'initial_data':
+                                setSensors(data.sensors || {});
+                                setDeviceStates(data.deviceStates || {});
+                                break;
+                            case 'sensor_update':
+                                setSensors(prev => ({
+                                    ...prev,
+                                    [data.sensor]: [...(prev[data.sensor] || []), data.data]
+                                }));
+                                break;
+                            case 'device_control':
+                                setDeviceStates(prev => ({
+                                    ...prev,
+                                    [data.device]: data.state
+                                }));
+                                break;
+                            case 'threshold_update':
+                                setSensors(prev => ({
+                                    ...prev,
+                                    [data.sensor]: (prev[data.sensor] || []).map(point => ({
+                                        ...point,
+                                        threshold: data.threshold
+                                    }))
+                                }));
+                                break;
+                        }
+                    } catch (e) {
+                        console.error('Error processing WebSocket message:', e);
+                    }
+                };
+
+                setWs(wsInstance);
             } catch (e) {
-                console.error('Error processing WebSocket message:', e);
+                console.error('Error creating WebSocket connection:', e);
+                setError('Failed to create WebSocket connection');
+                // Attempt to reconnect after 5 seconds
+                reconnectTimeout = setTimeout(connect, 5000);
             }
         };
 
-        setWs(websocket);
+        connect();
 
         return () => {
-            websocket.close();
+            if (wsInstance) {
+                wsInstance.close();
+            }
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
         };
     }, []);
 

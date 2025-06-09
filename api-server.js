@@ -6,10 +6,29 @@ const bodyParser = require('body-parser');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({
+    server,
+    // Add CORS for WebSocket
+    verifyClient: (info, callback) => {
+        const origin = info.origin || info.req.headers.origin;
+        if (!origin || origin === 'http://localhost:3000' || origin === 'https://fictional-yodel-jj5qxp96vwxqc5q44-3000.app.github.dev') {
+            callback(true);
+        } else {
+            callback(false, 403, 'Forbidden');
+        }
+    }
+});
+
+// CORS configuration
+const corsOptions = {
+    origin: ['http://localhost:3000', 'https://fictional-yodel-jj5qxp96vwxqc5q44-3000.app.github.dev'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+};
 
 // Middleware
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(bodyParser.json());
 
 // Store sensor data and device states
@@ -21,9 +40,9 @@ const MAX_HISTORY = 300;
 const clients = new Set();
 
 // WebSocket connection handler
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+    console.log('New WebSocket client connected from:', req.socket.remoteAddress);
     clients.add(ws);
-    console.log('New WebSocket client connected');
 
     // Send initial data to new client
     const initialData = {
@@ -31,11 +50,21 @@ wss.on('connection', (ws) => {
         sensors: Object.fromEntries(sensorData),
         deviceStates: Object.fromEntries(deviceStates)
     };
-    ws.send(JSON.stringify(initialData));
+
+    try {
+        ws.send(JSON.stringify(initialData));
+    } catch (e) {
+        console.error('Error sending initial data:', e);
+    }
 
     ws.on('close', () => {
         clients.delete(ws);
         console.log('Client disconnected');
+    });
+
+    ws.on('error', (error) => {
+        console.error('WebSocket error:', error);
+        clients.delete(ws);
     });
 });
 
@@ -44,10 +73,20 @@ function broadcast(data) {
     const message = JSON.stringify(data);
     clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(message);
+            try {
+                client.send(message);
+            } catch (e) {
+                console.error('Error broadcasting message:', e);
+            }
         }
     });
 }
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error('API Error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+});
 
 // API Routes
 
@@ -179,6 +218,6 @@ app.post('/api/device/:device/sensor/:sensor/threshold', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`API server running on port ${PORT}`);
 }); 

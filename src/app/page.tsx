@@ -265,7 +265,7 @@ const ThresholdDashboard = ({ sensors }: { sensors: SensorsState }) => {
   );
 };
 
-function DashboardPage() {
+function DashboardContent() {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
   const [backendApiStatusMessage, setBackendApiStatusMessage] = useState<string>('Checking API status...');
@@ -978,11 +978,13 @@ function DashboardPage() {
 
   // Merge MQTT and API sensors
   useEffect(() => {
+    if (!apiSensors) return;
+
     const mergedSensors = { ...sensors };
 
     // Add API sensors
     Object.entries(apiSensors).forEach(([key, data]) => {
-      if (data.length > 0) {
+      if (data && data.length > 0) {
         const latestPoint = data[data.length - 1];
         mergedSensors[key] = {
           ...mergedSensors[key],
@@ -1000,18 +1002,22 @@ function DashboardPage() {
     });
 
     setSensors(mergedSensors);
-  }, [apiSensors]);
+  }, [apiSensors, sensors]);
 
   // Merge device states
   useEffect(() => {
+    if (!apiDeviceStates) return;
+
     const mergedDeviceStates = { ...deviceStates };
 
     Object.entries(apiDeviceStates).forEach(([device, state]) => {
-      mergedDeviceStates[device] = {
-        ...mergedDeviceStates[device],
-        enabled: state.enabled,
-        scale: state.scale,
-      };
+      if (state) {
+        mergedDeviceStates[device] = {
+          ...mergedDeviceStates[device],
+          enabled: state.enabled,
+          scale: state.scale,
+        };
+      }
     });
 
     setDeviceStates(mergedDeviceStates);
@@ -2131,7 +2137,7 @@ function DashboardWithAuth() {
     </div>
   );
 
-  return <DashboardPage />;
+  return <DashboardContent />;
 }
 
 export default function AppEntry() {
