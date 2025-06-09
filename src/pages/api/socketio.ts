@@ -29,21 +29,29 @@ const IV = Buffer.from('1234567890123456', 'utf-8'); // Exactly 16 bytes for AES
 
 function decryptData(encryptedData: string): any {
   try {
-    // Convert base64 to buffer
-    const encryptedBuffer = Buffer.from(encryptedData, 'base64');
-    // Create decipher
-    const decipher = createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
-    // Decrypt
-    const decryptedBuffer = Buffer.concat([
-      decipher.update(encryptedBuffer),
-      decipher.final()
-    ]);
-    // Convert to string and parse JSON
-    const decryptedString = decryptedBuffer.toString('utf-8');
-    return JSON.parse(decryptedString);
+    // First try to parse as JSON (unencrypted data)
+    try {
+      return JSON.parse(encryptedData);
+    } catch {
+      // If not JSON, try to decrypt
+      const encryptedBuffer = Buffer.from(encryptedData, 'base64');
+      const decipher = createDecipheriv('aes-256-cbc', ENCRYPTION_KEY, IV);
+      const decryptedBuffer = Buffer.concat([
+        decipher.update(encryptedBuffer),
+        decipher.final()
+      ]);
+      const decryptedString = decryptedBuffer.toString('utf-8');
+      return JSON.parse(decryptedString);
+    }
   } catch (error) {
     console.error('[SocketIO API] Decryption error:', error);
-    return null;
+    // If decryption fails, try to parse the raw message as JSON
+    try {
+      return JSON.parse(encryptedData);
+    } catch (e) {
+      console.error('[SocketIO API] Failed to parse raw message:', e);
+      return null;
+    }
   }
 }
 
@@ -191,8 +199,8 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
           }
         });
       }
-        console.log('[SocketIO API] MQTT client already initialized. State:',
-          mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
+      console.log('[SocketIO API] MQTT client already initialized. State:',
+        mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
 
       io.on('connection', (socket: Socket) => {
         console.log('[SocketIO API] Socket.IO client connected:', socket.id);

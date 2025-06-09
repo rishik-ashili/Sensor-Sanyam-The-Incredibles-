@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
 interface ApiSensorData {
     value: number;
@@ -24,105 +24,123 @@ interface ApiContextType {
 
 const ApiContext = createContext<ApiContextType | undefined>(undefined);
 
+const POLLING_INTERVAL = 5000; // 5 seconds
+
 export function ApiProvider({ children }: { children: React.ReactNode }) {
     const [sensors, setSensors] = useState<Record<string, ApiSensorData[]>>({});
     const [deviceStates, setDeviceStates] = useState<Record<string, ApiDeviceState>>({});
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [ws, setWs] = useState<WebSocket | null>(null);
+    const [usePolling, setUsePolling] = useState(false);
+
+    const fetchData = useCallback(async () => {
+        try {
+            const response = await fetch('/api/sensor-data');
+            if (!response.ok) throw new Error('Failed to fetch sensor data');
+            const data = await response.json();
+            setSensors(data.sensors || {});
+            setDeviceStates(data.deviceStates || {});
+            setIsConnected(true);
+            setError(null);
+        } catch (e) {
+            console.error('Error fetching data:', e);
+            setError('Failed to fetch data');
+            setIsConnected(false);
+        }
+    }, []);
+
+    const connectWebSocket = useCallback(() => {
+        try {
+            // Use relative WebSocket URL
+            const wsUrl = `ws://${window.location.hostname}:3001`;
+            const wsInstance = new WebSocket(wsUrl);
+
+            wsInstance.onopen = () => {
+                console.log('API WebSocket connected');
+                setIsConnected(true);
+                setError(null);
+                setUsePolling(false);
+            };
+
+            wsInstance.onclose = () => {
+                console.log('API WebSocket disconnected');
+                setIsConnected(false);
+                setError('Disconnected from API server');
+                setUsePolling(true);
+            };
+
+            wsInstance.onerror = (event) => {
+                console.error('API WebSocket error:', event);
+                setError('WebSocket error occurred');
+                setUsePolling(true);
+            };
+
+            wsInstance.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    switch (data.type) {
+                        case 'initial_data':
+                            setSensors(data.sensors || {});
+                            setDeviceStates(data.deviceStates || {});
+                            break;
+                        case 'sensor_update':
+                            setSensors(prev => ({
+                                ...prev,
+                                [data.sensor]: [...(prev[data.sensor] || []), data.data]
+                            }));
+                            break;
+                        case 'device_control':
+                            setDeviceStates(prev => ({
+                                ...prev,
+                                [data.device]: data.state
+                            }));
+                            break;
+                        case 'threshold_update':
+                            setSensors(prev => ({
+                                ...prev,
+                                [data.sensor]: (prev[data.sensor] || []).map(point => ({
+                                    ...point,
+                                    threshold: data.threshold
+                                }))
+                            }));
+                            break;
+                    }
+                } catch (e) {
+                    console.error('Error processing WebSocket message:', e);
+                }
+            };
+
+            setWs(wsInstance);
+        } catch (e) {
+            console.error('Error creating WebSocket connection:', e);
+            setError('Failed to create WebSocket connection');
+            setUsePolling(true);
+        }
+    }, []);
 
     useEffect(() => {
-        let wsInstance: WebSocket | null = null;
-        let reconnectTimeout: NodeJS.Timeout;
+        connectWebSocket();
 
-        const connect = () => {
-            try {
-                // Use secure WebSocket if the page is served over HTTPS
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.hostname}:3001`;
-
-                wsInstance = new WebSocket(wsUrl);
-
-                wsInstance.onopen = () => {
-                    console.log('API WebSocket connected');
-                    setIsConnected(true);
-                    setError(null);
-                };
-
-                wsInstance.onclose = () => {
-                    console.log('API WebSocket disconnected');
-                    setIsConnected(false);
-                    setError('Disconnected from API server');
-
-                    // Attempt to reconnect after 5 seconds
-                    reconnectTimeout = setTimeout(connect, 5000);
-                };
-
-                wsInstance.onerror = (event) => {
-                    console.error('API WebSocket error:', event);
-                    setError('WebSocket error occurred');
-                };
-
-                wsInstance.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-
-                        switch (data.type) {
-                            case 'initial_data':
-                                setSensors(data.sensors || {});
-                                setDeviceStates(data.deviceStates || {});
-                                break;
-                            case 'sensor_update':
-                                setSensors(prev => ({
-                                    ...prev,
-                                    [data.sensor]: [...(prev[data.sensor] || []), data.data]
-                                }));
-                                break;
-                            case 'device_control':
-                                setDeviceStates(prev => ({
-                                    ...prev,
-                                    [data.device]: data.state
-                                }));
-                                break;
-                            case 'threshold_update':
-                                setSensors(prev => ({
-                                    ...prev,
-                                    [data.sensor]: (prev[data.sensor] || []).map(point => ({
-                                        ...point,
-                                        threshold: data.threshold
-                                    }))
-                                }));
-                                break;
-                        }
-                    } catch (e) {
-                        console.error('Error processing WebSocket message:', e);
-                    }
-                };
-
-                setWs(wsInstance);
-            } catch (e) {
-                console.error('Error creating WebSocket connection:', e);
-                setError('Failed to create WebSocket connection');
-                // Attempt to reconnect after 5 seconds
-                reconnectTimeout = setTimeout(connect, 5000);
-            }
-        };
-
-        connect();
+        // Set up polling if WebSocket fails
+        let pollingInterval: NodeJS.Timeout;
+        if (usePolling) {
+            pollingInterval = setInterval(fetchData, POLLING_INTERVAL);
+        }
 
         return () => {
-            if (wsInstance) {
-                wsInstance.close();
+            if (ws) {
+                ws.close();
             }
-            if (reconnectTimeout) {
-                clearTimeout(reconnectTimeout);
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
             }
         };
-    }, []);
+    }, [connectWebSocket, usePolling, fetchData]);
 
     const sendControl = async (device: string, enabled?: boolean, scale?: number) => {
         try {
-            const response = await fetch(`http://localhost:3001/api/device/${device}/control`, {
+            const response = await fetch(`/api/device/${device}/control`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ enabled, scale })
@@ -136,7 +154,7 @@ export function ApiProvider({ children }: { children: React.ReactNode }) {
 
     const sendThreshold = async (device: string, sensor: string, threshold: number) => {
         try {
-            const response = await fetch(`http://localhost:3001/api/device/${device}/sensor/${sensor}/threshold`, {
+            const response = await fetch(`/api/device/${device}/sensor/${sensor}/threshold`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ threshold })
