@@ -18,6 +18,8 @@ import {
   Tooltip,
   Legend,
   Filler,
+  TimeScale,
+  ScatterController
 } from 'chart.js';
 import 'chartjs-adapter-date-fns';
 import { format as formatDate, parseISO, subMinutes, isAfter } from 'date-fns';
@@ -46,7 +48,9 @@ ChartJS.register(
   Title,
   Tooltip,
   Legend,
-  Filler
+  Filler,
+  TimeScale,
+  ScatterController
 );
 
 const MAX_HISTORY_POINTS_CLIENT = 50; // Max history points to keep on client if receiving rapidly before initial load
@@ -1236,6 +1240,7 @@ function DashboardPage() {
                             {
                               label: sensor.displayName,
                               data: displayHistory.map(p => p.value),
+                              fill: false, // Prevent area fill
                             },
                           ],
                         };
@@ -1505,13 +1510,13 @@ function DashboardPage() {
                                   }} data={{
                                     labels: timestamps,
                                     datasets: [
-                                      { label: 'Raw', data: values, borderColor: 'hsl(var(--primary))', backgroundColor: 'hsla(var(--primary),0.1)', borderWidth: 1, pointRadius: 0 },
-                                      { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
-                                      { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
-                                      { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
-                                      peakIndex >= 0 ? { label: 'Peak', data: timestamps.map((_, i) => i === peakIndex ? max : null), borderColor: '#ef4444', backgroundColor: '#ef4444', pointRadius: 6, type: 'scatter', showLine: false } as any : undefined,
-                                      troughIndex >= 0 ? { label: 'Trough', data: timestamps.map((_, i) => i === troughIndex ? min : null), borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter', showLine: false } as any : undefined,
-                                      anomalies.length ? { label: 'Anomaly', data: timestamps.map((t, i) => anomalies.find(a => a && a.x === t) ? values[i] : null), borderColor: '#f59e42', backgroundColor: '#f59e42', pointRadius: 5, type: 'scatter', showLine: false } as any : undefined,
+                                      { label: 'Raw', data: values, borderColor: 'hsl(var(--primary))', backgroundColor: 'transparent', borderWidth: 1, pointRadius: 0, fill: false },
+                                      { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
+                                      { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
+                                      { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
+                                      peakIndex >= 0 ? { label: 'Peak', data: timestamps.map((_, i) => i === peakIndex ? max : null), borderColor: '#ef4444', backgroundColor: '#ef4444', pointRadius: 6, type: 'scatter', showLine: false, fill: false } as any : undefined,
+                                      troughIndex >= 0 ? { label: 'Trough', data: timestamps.map((_, i) => i === troughIndex ? min : null), borderColor: '#3b82f6', backgroundColor: '#3b82f6', pointRadius: 6, type: 'scatter', showLine: false, fill: false } as any : undefined,
+                                      anomalies.length ? { label: 'Anomaly', data: timestamps.map((t, i) => anomalies.find(a => a && a.x === t) ? values[i] : null), borderColor: '#f59e42', backgroundColor: '#f59e42', pointRadius: 5, type: 'scatter', showLine: false, fill: false } as any : undefined,
                                     ].filter(Boolean),
                                   }} />
                                 </div>
@@ -1522,7 +1527,7 @@ function DashboardPage() {
                                 <span className="font-semibold">Delta/Change Rate:</span>
                                 <div className="h-32 w-full">
                                   <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } } }}
-                                    data={{ labels: timestamps, datasets: [{ label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0 }] }} />
+                                    data={{ labels: timestamps, datasets: [{ label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' }] }} />
                                 </div>
                               </div>
                             )}
@@ -1531,7 +1536,7 @@ function DashboardPage() {
                                 <span className="font-semibold">Uptime (binary, per minute):</span>
                                 <div className="h-20 w-full">
                                   <Line options={{ ...chartOptions, plugins: { ...chartOptions.plugins, legend: { display: false } }, scales: { ...chartOptions.scales, y: { min: 0, max: 1, ticks: { stepSize: 1 } } } }}
-                                    data={{ labels: timestamps, datasets: [{ label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0 }] }} />
+                                    data={{ labels: timestamps, datasets: [{ label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' }] }} />
                                 </div>
                               </div>
                             )}
@@ -1817,10 +1822,10 @@ function DashboardPage() {
                         chartData = {
                           labels: timestamps,
                           datasets: [
-                            { label: 'Raw', data: values, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', borderWidth: 1, pointRadius: 0 },
-                            { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0 },
-                            { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0 },
-                            { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0 },
+                            { label: 'Raw', data: values, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', borderWidth: 1, pointRadius: 0, fill: false },
+                            { label: '3s Avg', data: rolling3, borderColor: '#fbbf24', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
+                            { label: '5s Avg', data: rolling5, borderColor: '#34d399', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
+                            { label: '10s Avg', data: rolling10, borderColor: '#60a5fa', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
                           ].filter(Boolean),
                         };
                       } else if (graphKey === 'delta') {
@@ -1833,7 +1838,7 @@ function DashboardPage() {
                         chartData = {
                           labels: timestamps,
                           datasets: [
-                            { label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0 },
+                            { label: 'Delta', data: delta, borderColor: '#f472b6', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
                           ],
                         };
                       } else if (graphKey === 'uptime') {
@@ -1853,7 +1858,7 @@ function DashboardPage() {
                         chartData = {
                           labels: timestamps,
                           datasets: [
-                            { label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0 },
+                            { label: 'Uptime', data: uptime, borderColor: '#22d3ee', borderWidth: 2, pointRadius: 0, fill: false, backgroundColor: 'transparent' },
                           ],
                         };
                         chartOptions.scales = { y: { min: 0, max: 1, ticks: { stepSize: 1 } } };
@@ -1873,7 +1878,7 @@ function DashboardPage() {
                         chartData = {
                           labels: hourly.map(h => h.hour),
                           datasets: [
-                            { label: 'Hourly Avg', data: hourly.map(h => h.avg), backgroundColor: '#818cf8', borderColor: '#6366f1', borderWidth: 2, type: 'bar' },
+                            { label: 'Hourly Avg', data: hourly.map(h => h.avg), backgroundColor: '#818cf8', borderColor: '#6366f1', borderWidth: 2, type: 'bar', fill: false },
                           ],
                         };
                         chartOptions.scales = { x: { type: 'category' } };
