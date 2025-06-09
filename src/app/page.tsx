@@ -39,6 +39,7 @@ import { GoogleGenAI } from "@google/genai";
 import { marked } from 'marked';
 import { AuthProvider, useAuth } from './AuthContext';
 import AuthPage from './AuthPage';
+import { ApiProvider, useApi } from './ApiContext';
 
 ChartJS.register(
   CategoryScale,
@@ -312,6 +313,8 @@ function DashboardPage() {
   const scaleTimeouts = useRef<{ [device: string]: NodeJS.Timeout | null }>({ rpi1: null, rpi2: null });
   const [thresholdAlertActive, setThresholdAlertActive] = useState(false);
   const [mapModalOpen, setMapModalOpen] = useState(false);
+  const [deviceStates, setDeviceStates] = useState<Record<string, { enabled: boolean; scale: number }>>({});
+  const { sensors: apiSensors, deviceStates: apiDeviceStates, isConnected: isApiConnected, sendControl: apiSendControl, sendThreshold: apiSendThreshold } = useApi();
 
   const { deviceNames, values: energyValues } = getLatestEnergyPerDevice(sensors);
   const energyBarData = {
@@ -682,6 +685,7 @@ function DashboardPage() {
         backgroundColor: 'hsl(var(--primary))',
       },
     },
+    type: 'line' as const,  // Explicitly type as 'line'
   };
 
   const formatDisplayTimestamp = (isoTimestamp: string | null): string => {
@@ -972,6 +976,77 @@ function DashboardPage() {
     setAiChatLoading(false);
   }
 
+  // Merge MQTT and API sensors
+  useEffect(() => {
+    const mergedSensors = { ...sensors };
+
+    // Add API sensors
+    Object.entries(apiSensors).forEach(([key, data]) => {
+      if (data.length > 0) {
+        const latestPoint = data[data.length - 1];
+        mergedSensors[key] = {
+          ...mergedSensors[key],
+          latestValue: latestPoint.value,
+          unit: latestPoint.unit,
+          history: data,
+          topic: key,
+          displayName: formatTopicName(key),
+          lastUpdateTimestamp: latestPoint.timestamp,
+          device: key.split('/')[0],
+          coordinates: latestPoint.coordinates,
+          threshold: latestPoint.threshold,
+        };
+      }
+    });
+
+    setSensors(mergedSensors);
+  }, [apiSensors]);
+
+  // Merge device states
+  useEffect(() => {
+    const mergedDeviceStates = { ...deviceStates };
+
+    Object.entries(apiDeviceStates).forEach(([device, state]) => {
+      mergedDeviceStates[device] = {
+        ...mergedDeviceStates[device],
+        enabled: state.enabled,
+        scale: state.scale,
+      };
+    });
+
+    setDeviceStates(mergedDeviceStates);
+  }, [apiDeviceStates, deviceStates]);
+
+  // Handle device control (both MQTT and API)
+  const handleDeviceControl = async (device: string, enabled?: boolean, scale?: number) => {
+    // Send to MQTT
+    if (mqttStatus.connected) {
+      const controlTopic = `sensorflow/demo/${device}/control`;
+      const payload = { enabled, scale };
+      socket?.emit('publish', { topic: controlTopic, payload });
+    }
+
+    // Send to API
+    if (isApiConnected) {
+      await apiSendControl(device, enabled, scale);
+    }
+  };
+
+  // Handle threshold updates (both MQTT and API)
+  const handleThresholdUpdate = async (device: string, sensor: string, threshold: number) => {
+    // Send to MQTT
+    if (mqttStatus.connected) {
+      const thresholdTopic = `sensorflow/demo/${device}/${sensor}/threshold`;
+      const payload = { threshold };
+      socket?.emit('publish', { topic: thresholdTopic, payload });
+    }
+
+    // Send to API
+    if (isApiConnected) {
+      await apiSendThreshold(device, sensor, threshold);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Loading Overlay */}
@@ -1181,7 +1256,7 @@ function DashboardPage() {
                     )}
                     <Switch
                       checked={enabled}
-                      onCheckedChange={checked => setDevicePublisher(device, checked)}
+                      onCheckedChange={checked => handleDeviceControl(device, checked)}
                       className="ml-2"
                       aria-label={`Toggle ${device} publisher`}
                     />
@@ -2037,8 +2112,9 @@ function DashboardPage() {
 }
 
 function DashboardWithAuth() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [showLoading, setShowLoading] = React.useState(false);
+
   React.useEffect(() => {
     if (user) {
       setShowLoading(true);
@@ -2054,24 +2130,16 @@ function DashboardWithAuth() {
       <span className="ml-4 text-xl text-indigo-700 font-semibold">Loading dashboard...</span>
     </div>
   );
-  return (
-    <div>
-      <div className="fixed top-4 right-4 z-50">
-        <button
-          onClick={logout}
-          className="px-4 py-2 rounded-lg bg-indigo-100 text-indigo-700 font-semibold shadow hover:bg-indigo-200 transition"
-        >Logout</button>
-      </div>
-      {/* DashboardPage below is your existing dashboard code */}
-      <DashboardPage />
-    </div>
-  );
+
+  return <DashboardPage />;
 }
 
 export default function AppEntry() {
   return (
     <AuthProvider>
-      <DashboardWithAuth />
+      <ApiProvider>
+        <DashboardWithAuth />
+      </ApiProvider>
     </AuthProvider>
   );
 }

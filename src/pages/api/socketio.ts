@@ -191,8 +191,8 @@ const socketIOHandler = (req: NextApiRequest, res: NextApiResponseWithSocket) =>
           }
         });
       }
-      console.log('[SocketIO API] MQTT client already initialized. State:',
-        mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
+        console.log('[SocketIO API] MQTT client already initialized. State:',
+          mqttClient.connected ? 'connected' : (mqttClient.reconnecting ? 'reconnecting' : 'disconnected/other'));
 
       io.on('connection', (socket: Socket) => {
         console.log('[SocketIO API] Socket.IO client connected:', socket.id);
