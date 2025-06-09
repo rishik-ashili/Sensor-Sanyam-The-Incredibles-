@@ -1,6 +1,21 @@
 "use client";
 import React, { useState } from 'react';
 import { useAuth } from './AuthContext';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
+import Typography from '@mui/material/Typography';
+import TextField from '@mui/material/TextField';
+import Button from '@mui/material/Button';
+import CircularProgress from '@mui/material/CircularProgress';
+import { styled } from '@mui/material/styles';
+
+const GradientBg = styled('div')({
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: 'linear-gradient(135deg, #e0e7ff 0%, #6366f1 100%)',
+});
 
 export default function AuthPage() {
     const { login, signup } = useAuth();
@@ -25,49 +40,67 @@ export default function AuthPage() {
     };
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 to-blue-200">
-            <div className="w-full max-w-md p-8 bg-white rounded-2xl shadow-2xl flex flex-col items-center animate-fade-in">
-                <div className="mb-6 text-center">
-                    <h1 className="text-3xl font-bold font-headline text-indigo-700 mb-2">SensorFlow Dashboard</h1>
-                    <p className="text-gray-500 text-sm">Sign {isSignup ? 'Up' : 'In'} to continue</p>
-                </div>
-                <form className="w-full" onSubmit={handleSubmit}>
-                    <input
-                        className="w-full px-4 py-2 mb-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
-                        type="text"
-                        placeholder="Username"
-                        value={username}
-                        onChange={e => setUsername(e.target.value)}
-                        required
-                        autoFocus
-                    />
-                    <input
-                        className="w-full px-4 py-2 mb-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
-                        type="password"
-                        placeholder="Password"
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        required
-                    />
-                    {error && <div className="text-red-500 text-sm mb-2 text-center">{error}</div>}
-                    <button
-                        type="submit"
-                        className="w-full py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 transition mb-2 disabled:opacity-60"
-                        disabled={loading}
-                    >
-                        {loading ? (isSignup ? 'Signing Up...' : 'Signing In...') : (isSignup ? 'Sign Up' : 'Sign In')}
-                    </button>
-                </form>
-                <div className="text-sm text-gray-500 mt-2">
-                    {isSignup ? 'Already have an account?' : "Don't have an account?"}
-                    <button
-                        className="ml-1 text-indigo-600 hover:underline font-medium"
-                        onClick={() => { setIsSignup(!isSignup); setError(''); }}
-                    >
-                        {isSignup ? 'Sign In' : 'Sign Up'}
-                    </button>
-                </div>
-            </div>
-        </div>
+        <GradientBg>
+            <Card className="w-full max-w-md shadow-2xl rounded-2xl animate-fade-in" sx={{ borderRadius: 4, boxShadow: 8, p: 2 }}>
+                <CardContent className="flex flex-col items-center">
+                    <div className="mb-6 text-center w-full">
+                        <Typography variant="h4" component="h1" className="font-headline" sx={{ color: '#4338ca', fontWeight: 700, mb: 1 }}>
+                            SensorFlow Dashboard
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: '#64748b' }}>
+                            Sign {isSignup ? 'Up' : 'In'} to continue
+                        </Typography>
+                    </div>
+                    <form className="w-full" onSubmit={handleSubmit} autoComplete="off">
+                        <TextField
+                            label="Username"
+                            variant="outlined"
+                            fullWidth
+                            margin="normal"
+                            value={username}
+                            onChange={e => setUsername(e.target.value)}
+                            required
+                            autoFocus
+                            InputProps={{ className: 'bg-white' }}
+                        />
+                        <TextField
+                            label="Password"
+                            variant="outlined"
+                            type="password"
+                            fullWidth
+                            margin="normal"
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            required
+                            InputProps={{ className: 'bg-white' }}
+                        />
+                        {error && <Typography color="error" variant="body2" className="text-center mt-2">{error}</Typography>}
+                        <Button
+                            type="submit"
+                            variant="contained"
+                            color="primary"
+                            fullWidth
+                            size="large"
+                            sx={{ mt: 2, borderRadius: 2, fontWeight: 600, boxShadow: 2, textTransform: 'none', letterSpacing: 1 }}
+                            disabled={loading}
+                        >
+                            {loading ? <CircularProgress size={24} color="inherit" /> : (isSignup ? 'Sign Up' : 'Sign In')}
+                        </Button>
+                    </form>
+                    <div className="text-sm text-gray-500 mt-4 w-full text-center">
+                        {isSignup ? 'Already have an account?' : "Don't have an account?"}
+                        <Button
+                            variant="text"
+                            color="primary"
+                            size="small"
+                            sx={{ ml: 1, fontWeight: 600, textTransform: 'none' }}
+                            onClick={() => { setIsSignup(!isSignup); setError(''); }}
+                        >
+                            {isSignup ? 'Sign In' : 'Sign Up'}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+        </GradientBg>
     );
 } 
