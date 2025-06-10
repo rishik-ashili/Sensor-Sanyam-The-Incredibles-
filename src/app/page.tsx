@@ -686,7 +686,7 @@ function DashboardPage() {
     },
     elements: {
       line: {
-        tension: 0.2,
+        tension: 0.4,  // Increased tension for smoother curves
         borderColor: 'hsl(var(--primary))',
         borderWidth: 2,
         fill: true,
@@ -698,6 +698,14 @@ function DashboardPage() {
         backgroundColor: 'hsl(var(--primary))',
       },
     },
+    animation: {
+      duration: 0  // Disable animations for smoother updates
+    },
+    interaction: {
+      mode: 'nearest' as const,
+      axis: 'x' as const,
+      intersect: false
+    }
   };
 
   const formatDisplayTimestamp = (isoTimestamp: string | null): string => {
@@ -1293,7 +1301,11 @@ function DashboardPage() {
                             {
                               label: sensor.displayName,
                               data: displayHistory.map(p => p.value),
-                              fill: false, // Prevent area fill
+                              fill: false,
+                              tension: 0.4,  // Increased tension for smoother curves
+                              borderWidth: 2,
+                              pointRadius: 0,
+                              pointHoverRadius: 5,
                             },
                           ],
                         };

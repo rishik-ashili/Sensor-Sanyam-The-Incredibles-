@@ -6,6 +6,7 @@ from datetime import datetime
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 import base64
+import numpy as np
 
 # MQTT Configuration
 MQTT_BROKER = "broker.hivemq.com"
@@ -162,16 +163,35 @@ client.subscribe(control_topic)
 client.message_callback_add(control_topic, on_control)
 print(f"[STARTUP] Subscribed to control topic: {control_topic}")
 
-ALPHA = 0.2  # Smoothing factor for exponential smoothing (increased for more responsiveness)
+# Improved smoothing configuration
+ALPHA = 0.05  # Reduced smoothing factor for more gradual changes
+WINDOW_SIZE = 5  # Number of previous values to consider
+value_history = [[] for _ in sensors]  # Store history for each sensor
+
+def get_smoothed_value(sensor_index: int, new_value: float) -> float:
+    """Get a smoothed value using weighted moving average."""
+    history = value_history[sensor_index]
+    history.append(new_value)
+    if len(history) > WINDOW_SIZE:
+        history.pop(0)
+    
+    # Use weighted moving average with more weight on recent values
+    weights = np.linspace(0.5, 1.0, len(history))
+    weights = weights / np.sum(weights)
+    return float(np.average(history, weights=weights))
 
 try:
     while True:
         if enabled:
             for i, sensor in enumerate(sensors):
-                # Exponential smoothing for realistic sensor data
+                # Generate new random value
                 new_random = random.uniform(sensor["min"], sensor["max"])
+                
+                # Apply exponential smoothing
                 smoothed = ALPHA * new_random + (1 - ALPHA) * current_values[i]
-                current_values[i] = round(smoothed, 2)  # Clamp to 2 decimals
+                
+                # Apply additional smoothing using weighted moving average
+                current_values[i] = get_smoothed_value(i, smoothed)
                 value = current_values[i] * scale
                 
                 # Prepare and encrypt sensor payload
