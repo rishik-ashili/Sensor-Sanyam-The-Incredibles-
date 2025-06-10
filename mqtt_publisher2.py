@@ -158,13 +158,15 @@ control_topic = f"{BASE_TOPIC}/rpi2/control"
 client.subscribe(control_topic)
 client.message_callback_add(control_topic, on_control)
 
+ALPHA = 0.1  # Smoothing factor for exponential smoothing
+
 try:
     while True:
         if enabled:
             for i, sensor in enumerate(sensors):
-                # Update sensor value
-                delta = random.uniform(-0.5, 0.5)
-                current_values[i] = min(max(current_values[i] + delta, sensor["min"]), sensor["max"])
+                # Exponential smoothing for realistic sensor data
+                new_random = random.uniform(sensor["min"], sensor["max"])
+                current_values[i] = ALPHA * new_random + (1 - ALPHA) * current_values[i]
                 value = current_values[i] * scale
                 
                 # Prepare and encrypt sensor payload

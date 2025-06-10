@@ -105,6 +105,8 @@ current_values = [random.uniform(sensor["min"], sensor["max"]) for sensor in sen
 # Initialize per-sensor energy (monotonically increasing)
 energy_values = [0.0 for _ in sensors]
 
+ALPHA = 0.1  # Smoothing factor for exponential smoothing
+
 def send_sensor_data(sensor_index: int, value: float, energy: float):
     """Send sensor data to the API endpoint with retry logic."""
     try:
@@ -165,9 +167,9 @@ def main():
         while True:
             if enabled:
                 for i, sensor in enumerate(sensors):
-                    # Update sensor value using random walk
-                    delta = random.uniform(-0.5, 0.5)
-                    current_values[i] = min(max(current_values[i] + delta, sensor["min"]), sensor["max"])
+                    # Exponential smoothing for realistic sensor data
+                    new_random = random.uniform(sensor["min"], sensor["max"])
+                    current_values[i] = ALPHA * new_random + (1 - ALPHA) * current_values[i]
                     value = current_values[i] * scale
                     
                     # Update energy value
