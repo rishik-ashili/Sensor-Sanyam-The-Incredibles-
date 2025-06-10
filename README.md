@@ -2,6 +2,41 @@
 
 A comprehensive real-time monitoring dashboard for industrial IoT devices with advanced features for machine status monitoring, energy consumption tracking, and environmental parameter management.
 
+## Novel Features
+
+### 1. AI-Powered Sensor Insights
+- **Gemini AI Integration**: Advanced AI analysis of sensor data
+- **Automated Problem Detection**: Identifies sensor anomalies and issues
+- **Intelligent Recommendations**: Provides actionable solutions for detected problems
+- **Real-time Analysis**: Continuous monitoring and instant insights
+
+### 2. Interactive Location Mapping
+- **Real-time Device Tracking**: Visual representation of all connected devices
+- **Location-based Analytics**: Monitor device distribution across locations
+- **Device Density Visualization**: Heat maps showing device concentration
+- **Interactive Map Features**:
+  - Click to view device details
+  - Filter devices by type/status
+  - Real-time location updates
+  - Customizable view options
+
+### 3. Advanced Report Generation
+- **Customizable Export Options**:
+  - Select individual or multiple sensors
+  - Choose specific graphs or all visualizations
+  - Export format selection (PDF/CSV)
+  - Data granularity options
+- **Flexible Data Selection**:
+  - Raw sensor values
+  - Processed/analyzed data
+  - Custom date ranges
+  - Specific metrics
+- **Report Customization**:
+  - Add/remove sections
+  - Custom headers and footers
+  - Branding options
+  - Multiple export formats
+
 ## Features
 
 ### Industrial Monitoring

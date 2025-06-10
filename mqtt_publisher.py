@@ -39,39 +39,29 @@ enabled = True
 scale = 1.0
 
 def on_connect(client, userdata, flags, rc):
-    print(f"[CONNECT] Connected with result code {rc}")
     if rc == 0:
-        print("[CONNECT] Successfully connected to MQTT broker")
         # Resubscribe to control topic on reconnect
         control_topic = f"{BASE_TOPIC}/rpi1/control"
         client.subscribe(control_topic)
-        print(f"[CONNECT] Subscribed to control topic: {control_topic}")
     else:
         print(f"[CONNECT] Failed to connect, return code {rc}")
 
 def on_disconnect(client, userdata, rc):
-    print(f"[DISCONNECT] Disconnected with result code {rc}")
     if rc != 0:
         print("[DISCONNECT] Unexpected disconnection. Attempting to reconnect...")
 
 def on_publish(client, userdata, mid):
     """Callback when a message is published."""
-    print(f"[PUBLISH] Message {mid} published successfully")
+    pass  # Remove publish logging
 
 def on_control(client, userdata, msg):
     global enabled, scale
     try:
-        print(f"[CONTROL] Received control message: {msg.payload.decode()}")
         payload = json.loads(msg.payload.decode())
         if 'enabled' in payload:
             enabled = bool(payload['enabled'])
-            print(f"[CONTROL] Publishing {'enabled' if enabled else 'disabled'} via control topic.")
         if 'scale' in payload:
-            old_scale = scale
             scale = float(payload['scale'])
-            print(f"[CONTROL] Scale changed from {old_scale} to {scale}")
-    except json.JSONDecodeError as e:
-        print(f"[CONTROL] Error decoding JSON: {e}")
     except Exception as e:
         print(f"[CONTROL] Error processing control message: {e}")
 
@@ -135,7 +125,6 @@ for _ in range(5):
         encrypted_payload = encrypt_data(payload)
         if encrypted_payload:
             topic = f"{BASE_TOPIC}/{sensor['name']}"
-            print(f"[PUBLISH] Sending to {topic}: {payload}")
             print(f"[ENCRYPTED] {encrypted_payload}")
             client.publish(topic, encrypted_payload)
             
@@ -151,7 +140,6 @@ for _ in range(5):
             encrypted_energy_payload = encrypt_data(energy_payload)
             if encrypted_energy_payload:
                 energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
-                print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                 print(f"[ENCRYPTED] {encrypted_energy_payload}")
                 client.publish(energy_topic, encrypted_energy_payload)
     time.sleep(0.2)  # 200ms between bursts
@@ -206,7 +194,6 @@ try:
                 encrypted_payload = encrypt_data(payload)
                 if encrypted_payload:
                     topic = f"{BASE_TOPIC}/{sensor['name']}"
-                    print(f"[PUBLISH] Sending to {topic}: {payload}")
                     print(f"[ENCRYPTED] {encrypted_payload}")
                     client.publish(topic, encrypted_payload)
                 
@@ -222,7 +209,6 @@ try:
                 encrypted_energy_payload = encrypt_data(energy_payload)
                 if encrypted_energy_payload:
                     energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
-                    print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                     print(f"[ENCRYPTED] {encrypted_energy_payload}")
                     client.publish(energy_topic, encrypted_energy_payload)
             time.sleep(1.5)

@@ -38,11 +38,16 @@ enabled = True
 scale = 1.0
 
 def on_connect(client, userdata, flags, rc):
-    print(f"Connected with result code {rc}")
+    if rc == 0:
+        # Resubscribe to control topic on reconnect
+        control_topic = f"{BASE_TOPIC}/rpi2/control"
+        client.subscribe(control_topic)
+    else:
+        print(f"[CONNECT] Failed to connect, return code {rc}")
 
 def on_publish(client, userdata, mid):
     """Callback when a message is published."""
-    print(f"[PUBLISH] Message {mid} published successfully")
+    pass  # Remove publish logging
 
 def on_control(client, userdata, msg):
     global enabled, scale
@@ -50,12 +55,10 @@ def on_control(client, userdata, msg):
         payload = json.loads(msg.payload.decode())
         if 'enabled' in payload:
             enabled = bool(payload['enabled'])
-            print(f"[CONTROL] Publishing {'enabled' if enabled else 'disabled'} via control topic.")
         if 'scale' in payload:
             scale = float(payload['scale'])
-            print(f"[CONTROL] Scale set to {scale}")
     except Exception as e:
-        print(f"[CONTROL] Error parsing control message: {e}")
+        print(f"[CONTROL] Error processing control message: {e}")
 
 # Connect to broker
 client.on_connect = on_connect
@@ -127,7 +130,6 @@ for _ in range(5):
         encrypted_payload = encrypt_data(payload)
         if encrypted_payload:
             topic = f"{BASE_TOPIC}/{sensor['name']}"
-            print(f"[PUBLISH] Sending to {topic}: {payload}")
             print(f"[ENCRYPTED] {encrypted_payload}")
             client.publish(topic, encrypted_payload)
             
@@ -143,7 +145,6 @@ for _ in range(5):
             encrypted_energy_payload = encrypt_data(energy_payload)
             if encrypted_energy_payload:
                 energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
-                print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                 print(f"[ENCRYPTED] {encrypted_energy_payload}")
                 client.publish(energy_topic, encrypted_energy_payload)
     time.sleep(0.2)  # 200ms between bursts
@@ -177,7 +178,6 @@ try:
                 encrypted_payload = encrypt_data(payload)
                 if encrypted_payload:
                     topic = f"{BASE_TOPIC}/{sensor['name']}"
-                    print(f"[PUBLISH] Sending to {topic}: {payload}")
                     print(f"[ENCRYPTED] {encrypted_payload}")
                     client.publish(topic, encrypted_payload)
                 
@@ -193,7 +193,6 @@ try:
                 encrypted_energy_payload = encrypt_data(energy_payload)
                 if encrypted_energy_payload:
                     energy_topic = f"{BASE_TOPIC}/{sensor['name']}/energy"
-                    print(f"[PUBLISH] Sending to {energy_topic}: {energy_payload}")
                     print(f"[ENCRYPTED] {encrypted_energy_payload}")
                     client.publish(energy_topic, encrypted_energy_payload)
             time.sleep(1.5)
