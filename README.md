@@ -84,7 +84,7 @@ A comprehensive real-time monitoring dashboard for industrial IoT devices with a
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/rishik-ashili/Sensor-Sanyam-The-Incredibles-.git
 cd mqtt-dashboard
 ```
 
