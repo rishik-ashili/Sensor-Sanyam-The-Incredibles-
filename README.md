@@ -1,45 +1,49 @@
-# MQTT Dashboard
+# Industrial IoT Monitoring Dashboard
 
-A real-time monitoring dashboard for MQTT devices with advanced features including threshold alerts, data visualization, and responsive design.
+A comprehensive real-time monitoring dashboard for industrial IoT devices with advanced features for machine status monitoring, energy consumption tracking, and environmental parameter management.
 
 ## Features
 
-### Real-time Monitoring
-- Live data streaming from MQTT devices
-- Real-time updates for temperature, humidity, and other sensor data
-- Interactive charts and graphs
-- Customizable dashboard layout
+### Industrial Monitoring
+- Real-time machine status monitoring
+- Energy consumption tracking per device and sensor
+- Environmental parameter monitoring (temperature, humidity, pressure, CO2, light)
+- Location-based device tracking
+- Historical data analysis and trending
 
-### Alert System
+### Real-time Data Visualization
+- Live data streaming from multiple IoT devices
+- Interactive charts and graphs with customizable time ranges
+- Energy consumption visualization with bar charts
+- Threshold monitoring with visual alerts
+- Device status indicators
+
+### Remote Device Control
+- Device enable/disable controls
+- Scale adjustment for sensor readings
+- Real-time control commands through MQTT
+- Device-specific settings management
+
+### Customization and Flexibility
+- Drag-and-drop dashboard layout
+- Configurable widgets and charts
+- Multiple theme options (normal, dark, blue)
+- Responsive design for all screen sizes
+- Customizable data views and time ranges
+
+### Alerts and Automation
 - Configurable threshold alerts
 - Visual alerts (screen turns red when thresholds are exceeded)
+- Real-time notifications
 - Customizable alert conditions
-- Real-time notification system
+- Energy consumption alerts
 
-### Authentication
+### Security and Multi-User Support
 - Secure user authentication
-- Admin and user roles
-- Protected routes and features
+- Role-based access control (Admin/User)
+- End-to-end encrypted data communications
+- Secure MQTT broker integration
 - Session management
-
-### Data Visualization
-- Line charts for historical data
-- Bar charts for comparative analysis
-- Real-time data updates
-- Customizable time ranges
-- Export functionality (PDF)
-
-### Responsive Design
-- Mobile-first approach
-- Adaptive layouts for phones, tablets, and desktops
-- Touch-friendly interface
-- Responsive charts and tables
-
-### Custom MQTT Integration
-- Support for custom MQTT brokers
-- Easy broker configuration
-- Secure connection handling
-- Multiple device support
 
 ## Installation
 
@@ -78,8 +82,8 @@ npm start
 
 1. Start the MQTT publishers:
 ```bash
-python mqtt_publisher.py
-python mqtt_publisher2.py
+python mqtt_publisher.py  # Main industrial sensors
+python mqtt_publisher2.py # Additional sensors
 ```
 
 2. Access the dashboard at `http://localhost:9003`
@@ -93,6 +97,28 @@ python mqtt_publisher2.py
 - User Registration:
   - Click "Sign Up" to create a new user account
   - Follow the registration process
+
+### Industrial Monitoring Features
+
+1. **Machine Status Monitoring**
+   - View real-time status of all connected devices
+   - Monitor device connectivity
+   - Track device locations
+   - Enable/disable devices remotely
+
+2. **Energy Consumption Tracking**
+   - Monitor energy usage per device
+   - Track energy consumption per sensor
+   - View historical energy data
+   - Set energy consumption alerts
+
+3. **Environmental Monitoring**
+   - Temperature monitoring
+   - Humidity tracking
+   - Pressure monitoring
+   - CO2 levels
+   - Light intensity
+   - Custom threshold settings
 
 ### Custom MQTT Integration
 
@@ -125,6 +151,7 @@ The current alert system implements visual alerts by turning the screen red when
 1. Modifying the alert conditions in the dashboard
 2. Implementing custom alert actions
 3. Adding new notification methods
+4. Setting up energy consumption alerts
 
 ## Responsive Design
 
