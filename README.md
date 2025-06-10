@@ -1,4 +1,6 @@
-# Industrial IoT Monitoring Dashboard
+# Sensor Sanyam
+![logo](https://github.com/user-attachments/assets/7db1853f-edd7-42c1-a9e2-af06a553adda)
+
 
 A comprehensive real-time monitoring dashboard for industrial IoT devices with advanced features for machine status monitoring, energy consumption tracking, and environmental parameter management.
 
@@ -85,7 +87,7 @@ A comprehensive real-time monitoring dashboard for industrial IoT devices with a
 1. Clone the repository:
 ```bash
 git clone https://github.com/rishik-ashili/Sensor-Sanyam-The-Incredibles-.git
-cd mqtt-dashboard
+cd Sensor-Sanyam-The-Incredibles-
 ```
 
 2. Install Python dependencies:
@@ -197,13 +199,18 @@ The dashboard is fully responsive and works on:
 
 The layout automatically adjusts based on screen size and device type.
 
-## Contributing
+## Demo Video
+[![Watch the video](https://img.youtube.com/vi/dg13FC4ospw/hqdefault.jpg)](https://youtu.be/dg13FC4ospw)
 
-1. Fork the repository
-2. Create your feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+## Screenshots
+![WhatsApp Image 2025-06-10 at 23 52 17](https://github.com/user-attachments/assets/536ecc3c-d0af-456a-9bcf-c46ef346ca42)
+![WhatsApp Image 2025-06-10 at 23 52 37](https://github.com/user-attachments/assets/a29f013a-90c4-4937-bcf9-0d921c4d4396)
+![WhatsApp Image 2025-06-10 at 23 54 19](https://github.com/user-attachments/assets/dacaa382-0468-42bd-9641-2064c7368290)
+
+
+
+
+
 
 ## License
 
