@@ -1,10 +1,14 @@
+"use client";
 
 import Link from 'next/link';
 import { MountainIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ConnectionStatusIndicator from '@/components/dashboard/ConnectionStatusIndicator';
+import { useAuth } from '@/app/AuthContext';
 
 export default function Header() {
+  const { role } = useAuth();
+  const isAdmin = role === 'admin';
   return (
     <header className="bg-card shadow-sm sticky top-0 z-40 border-b border-border">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -16,10 +20,12 @@ export default function Header() {
           <Button variant="ghost" asChild>
             <Link href="/">Dashboard</Link>
           </Button>
-          <Button variant="ghost" asChild>
-            <Link href="/settings">Settings</Link>
-          </Button>
-          <ConnectionStatusIndicator /> 
+          {isAdmin && (
+            <Button variant="ghost" asChild>
+              <Link href="/settings">Settings</Link>
+            </Button>
+          )}
+          <ConnectionStatusIndicator />
         </nav>
       </div>
     </header>

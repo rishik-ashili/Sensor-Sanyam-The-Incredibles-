@@ -8,6 +8,7 @@ import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import { styled } from '@mui/material/styles';
+import { Tabs, Tab } from '@mui/material';
 
 const GradientBg = styled('div')({
     minHeight: '100vh',
@@ -20,6 +21,7 @@ const GradientBg = styled('div')({
 export default function AuthPage() {
     const { login, signup } = useAuth();
     const [isSignup, setIsSignup] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -33,10 +35,15 @@ export default function AuthPage() {
             const ok = await signup(username, password);
             if (!ok) setError('Username already exists.');
         } else {
-            const ok = await login(username, password);
+            const ok = await login(username, password, isAdmin);
             if (!ok) setError('Invalid username or password.');
         }
         setLoading(false);
+    };
+
+    const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+        setIsAdmin(newValue === 1);
+        setError('');
     };
 
     return (
@@ -51,6 +58,24 @@ export default function AuthPage() {
                             Sign {isSignup ? 'Up' : 'In'} to continue
                         </Typography>
                     </div>
+
+                    {!isSignup && (
+                        <Tabs
+                            value={isAdmin ? 1 : 0}
+                            onChange={handleTabChange}
+                            className="w-full mb-4"
+                            sx={{
+                                '& .MuiTab-root': {
+                                    textTransform: 'none',
+                                    fontWeight: 600,
+                                },
+                            }}
+                        >
+                            <Tab label="User Login" />
+                            <Tab label="Admin Login" />
+                        </Tabs>
+                    )}
+
                     <form className="w-full" onSubmit={handleSubmit} autoComplete="off">
                         <TextField
                             label="Username"
@@ -87,18 +112,20 @@ export default function AuthPage() {
                             {loading ? <CircularProgress size={24} color="inherit" /> : (isSignup ? 'Sign Up' : 'Sign In')}
                         </Button>
                     </form>
-                    <div className="text-sm text-gray-500 mt-4 w-full text-center">
-                        {isSignup ? 'Already have an account?' : "Don't have an account?"}
-                        <Button
-                            variant="text"
-                            color="primary"
-                            size="small"
-                            sx={{ ml: 1, fontWeight: 600, textTransform: 'none' }}
-                            onClick={() => { setIsSignup(!isSignup); setError(''); }}
-                        >
-                            {isSignup ? 'Sign In' : 'Sign Up'}
-                        </Button>
-                    </div>
+                    {!isAdmin && (
+                        <div className="text-sm text-gray-500 mt-4 w-full text-center">
+                            {isSignup ? 'Already have an account?' : "Don't have an account?"}
+                            <Button
+                                variant="text"
+                                color="primary"
+                                size="small"
+                                sx={{ ml: 1, fontWeight: 600, textTransform: 'none' }}
+                                onClick={() => { setIsSignup(!isSignup); setError(''); }}
+                            >
+                                {isSignup ? 'Sign In' : 'Sign Up'}
+                            </Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
         </GradientBg>

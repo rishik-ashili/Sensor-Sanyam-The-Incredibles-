@@ -276,7 +276,7 @@ function getAllowedDevices() {
   return [...defaultDevices, ...customDevices];
 }
 
-function DashboardPage() {
+function DashboardPage({ isAdmin }: { isAdmin: boolean }) {
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showReadyDialog, setShowReadyDialog] = useState(false);
   const [backendApiStatusMessage, setBackendApiStatusMessage] = useState<string>('Checking API status...');
@@ -811,12 +811,14 @@ function DashboardPage() {
 
   // Function to send control message to backend API
   const setDevicePublisher = async (device: string, enabled: boolean) => {
+    if (!isAdmin) return; // Only admin can enable/disable devices
     setDeviceEnabled(prev => ({ ...prev, [device]: enabled }));
     await fetch(`/api/device-control?device=${device}&enabled=${enabled ? 'true' : 'false'}`, { method: 'POST' });
   };
 
   // Function to send scale control message (debounced)
   const setDeviceScaleDebounced = (device: string, scale: number) => {
+    if (!isAdmin) return; // Only admin can adjust device scale
     setDeviceScale(prev => ({ ...prev, [device]: scale }));
     if (scaleTimeouts.current[device]) clearTimeout(scaleTimeouts.current[device]!);
     scaleTimeouts.current[device] = setTimeout(() => {
@@ -1239,12 +1241,14 @@ function DashboardPage() {
                       if (connectionType === 'custom-mqtt') return <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Custom MQTT</span>;
                       return null;
                     })()}
-                    <Switch
-                      checked={enabled}
-                      onCheckedChange={checked => setDevicePublisher(device, checked)}
-                      className="ml-2"
-                      aria-label={`Toggle ${device} publisher`}
-                    />
+                    {isAdmin && (
+                      <Switch
+                        checked={enabled}
+                        onCheckedChange={checked => setDevicePublisher(device, checked)}
+                        className="ml-2"
+                        aria-label={`Toggle ${device} publisher`}
+                      />
+                    )}
                     <Button
                       size="sm"
                       variant={saved ? 'default' : 'outline'}
@@ -1282,8 +1286,8 @@ function DashboardPage() {
                       breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                       cols={{ lg: 6, md: 4, sm: 2, xs: 1, xxs: 1 }}
                       rowHeight={80}
-                      isResizable
-                      isDraggable
+                      isResizable={isAdmin}
+                      isDraggable={isAdmin}
                       onLayoutChange={(l: Layout[]) => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
                       measureBeforeMount={false}
                       useCSSTransforms={true}
@@ -1318,12 +1322,16 @@ function DashboardPage() {
                           <div key={sensor.topic} data-grid={grid}>
                             <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative">
                               <div className="absolute top-2 right-2 flex gap-2 z-10">
-                                <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
-                                  {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
-                                </Button>
-                                <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
-                                  <XCircle className="h-4 w-4" />
-                                </Button>
+                                {isAdmin && (
+                                  <>
+                                    <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
+                                      {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
+                                    </Button>
+                                    <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
+                                      <XCircle className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
                               </div>
                               <CardHeader className="pb-2">
                                 <CardTitle className="font-headline flex items-center justify-between text-xl">
@@ -1415,22 +1423,24 @@ function DashboardPage() {
                   <CardDescription>Compare current sensor values to their thresholds in real time.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="mb-4 flex flex-wrap gap-6 items-center">
-                    {['rpi1', 'rpi2'].map(device => (
-                      <div key={device} className="flex flex-col items-center min-w-[200px]">
-                        <span className="mb-1 font-semibold text-sm text-primary">{device} Value Scale</span>
-                        <Slider
-                          min={0.1}
-                          max={2.0}
-                          step={0.01}
-                          value={[deviceScale[device] ?? 1.0]}
-                          onValueChange={([val]) => setDeviceScaleDebounced(device, val)}
-                          className="w-40"
-                        />
-                        <span className="mt-1 text-xs text-muted-foreground">{(deviceScale[device] ?? 1.0).toFixed(2)}x</span>
-                      </div>
-                    ))}
-                  </div>
+                  {isAdmin && (
+                    <div className="mb-4 flex flex-wrap gap-6 items-center">
+                      {['rpi1', 'rpi2'].map(device => (
+                        <div key={device} className="flex flex-col items-center min-w-[200px]">
+                          <span className="mb-1 font-semibold text-sm text-primary">{device} Value Scale</span>
+                          <Slider
+                            min={0.1}
+                            max={2.0}
+                            step={0.01}
+                            value={[deviceScale[device] ?? 1.0]}
+                            onValueChange={([val]) => setDeviceScaleDebounced(device, val)}
+                            className="w-40"
+                          />
+                          <span className="mt-1 text-xs text-muted-foreground">{(deviceScale[device] ?? 1.0).toFixed(2)}x</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <ThresholdDashboard sensors={filteredSensors} />
                 </CardContent>
               </Card>
@@ -2119,7 +2129,7 @@ function DashboardPage() {
 }
 
 function DashboardWithAuth() {
-  const { user, logout } = useAuth();
+  const { user, role, logout } = useAuth();
   const [showLoading, setShowLoading] = React.useState(false);
   React.useEffect(() => {
     if (user) {
@@ -2138,14 +2148,17 @@ function DashboardWithAuth() {
   );
   return (
     <div>
-      <div className="fixed top-4 right-4 z-50">
+      {/* Move the logged in message below the navbar */}
+      <div className="container mx-auto px-4 mt-6 mb-2 flex items-center justify-end">
+        <span className="text-sm text-muted-foreground">
+          Logged in as: <span className="font-semibold">{user}</span> ({role})
+        </span>
         <button
           onClick={logout}
-          className="px-4 py-2 rounded-lg bg-indigo-100 text-indigo-700 font-semibold shadow hover:bg-indigo-200 transition"
+          className="ml-4 px-4 py-2 rounded-lg bg-indigo-100 text-indigo-700 font-semibold shadow hover:bg-indigo-200 transition"
         >Logout</button>
       </div>
-      {/* DashboardPage below is your existing dashboard code */}
-      <DashboardPage />
+      <DashboardPage isAdmin={role === 'admin'} />
     </div>
   );
 }
