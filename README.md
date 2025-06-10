@@ -84,34 +84,62 @@ A comprehensive real-time monitoring dashboard for industrial IoT devices with a
 
 ## Installation
 
-1. Clone the repository:
+## Installation
+
+1. Create and activate a virtual environment:
+
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+```
+
+2. Clone the repository:
+
 ```bash
 git clone https://github.com/rishik-ashili/Sensor-Sanyam-The-Incredibles-.git
 cd Sensor-Sanyam-The-Incredibles-
 ```
 
-2. Install Python dependencies:
+3. Install Python dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Install Node.js dependencies:
+4. Install Node.js dependencies:
+
 ```bash
 npm install
+
+npm install @genkit-ai/googleai
+npm install --save-dev @types/genkit
+npm install genkit
+npm install @google/genai node-fetch
 ```
 
-4. Set up environment variables:
-Create a `.env` file in the root directory with the following variables:
+5. Set up environment variables:
+   Create a `.env` file in the root directory with the following variables:
+
 ```
 NEXT_PUBLIC_API_URL=http://localhost:9003
 GOOGLE_API_KEY=your_gemini_api_key
 ```
 
-5. Build and start the application:
+6. Build and start the application:
+
 ```bash
 npm run build
 npm start
 ```
+
+7. If the application does not work locally, try running it on GitHub Codespaces:
+
+* Open the repository on GitHub.
+* Press the `.` (dot) key to open the repository in Codespaces.
+* Once the environment loads, follow the same installation steps as above.
+* Run the same commands to start the application.
+
+
 
 ## Usage
 
@@ -207,10 +235,8 @@ The layout automatically adjusts based on screen size and device type.
 ![WhatsApp Image 2025-06-10 at 23 52 37](https://github.com/user-attachments/assets/a29f013a-90c4-4937-bcf9-0d921c4d4396)
 ![WhatsApp Image 2025-06-10 at 23 54 19](https://github.com/user-attachments/assets/dacaa382-0468-42bd-9641-2064c7368290)
 
-
-
-
-
+## System Architecture
+![architecture](https://github.com/user-attachments/assets/1dd04723-0ad8-4ed2-9e57-be198f52a380)
 
 ## License
 
