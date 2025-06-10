@@ -39,7 +39,7 @@ A comprehensive real-time monitoring dashboard for industrial IoT devices with a
 
 ## Features
 
-### Industrial Monitoring
+### Real-time Monitoring
 - Real-time machine status monitoring
 - Energy consumption tracking per device and sensor
 - Environmental parameter monitoring (temperature, humidity, pressure, CO2, light)
