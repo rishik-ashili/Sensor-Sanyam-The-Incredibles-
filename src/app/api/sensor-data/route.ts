@@ -5,6 +5,10 @@ import { createCipheriv } from 'crypto';
 const MQTT_BROKER = 'mqtt://broker.hivemq.com:1883';
 const BASE_TOPIC = 'sensorflow/demo';
 
+// Authentication Configuration
+const API_USERNAME = process.env.API_USERNAME || 'sensorflow';
+const API_PASSWORD = process.env.API_PASSWORD || 'sensorflow123';
+
 // Encryption Configuration
 const ENCRYPTION_KEY = Buffer.from('12345678901234567890123456789012', 'utf-8');
 const IV = Buffer.from('1234567890123456', 'utf-8');
@@ -92,7 +96,38 @@ function encryptData(data: any): string {
     }
 }
 
+function validateAuth(request: NextRequest): boolean {
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) return false;
+
+    const [type, credentials] = authHeader.split(' ');
+    if (type !== 'Basic') return false;
+
+    const [username, password] = Buffer.from(credentials, 'base64').toString().split(':');
+    return username === API_USERNAME && password === API_PASSWORD;
+}
+
 export async function POST(request: NextRequest) {
+    // Add CORS headers
+    const headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    };
+
+    // Handle preflight requests
+    if (request.method === 'OPTIONS') {
+        return new NextResponse(null, { headers });
+    }
+
+    // Validate authentication
+    if (!validateAuth(request)) {
+        return NextResponse.json(
+            { error: 'Unauthorized' },
+            { status: 401, headers }
+        );
+    }
+
     try {
         const data = await request.json();
 
@@ -100,7 +135,7 @@ export async function POST(request: NextRequest) {
         if (!data.value || !data.timestamp || !data.unit || !data.device) {
             return NextResponse.json(
                 { error: 'Missing required fields' },
-                { status: 400 }
+                { status: 400, headers }
             );
         }
 
@@ -131,7 +166,7 @@ export async function POST(request: NextRequest) {
                     console.error('[Sensor Data API] MQTT publish error:', err);
                     reject(NextResponse.json(
                         { error: 'Failed to publish to MQTT', details: err.message },
-                        { status: 500 }
+                        { status: 500, headers }
                     ));
                 } else {
                     console.log(`[Sensor Data API] Published to ${topic}:`, payload);
@@ -157,7 +192,7 @@ export async function POST(request: NextRequest) {
                         });
                     }
 
-                    resolve(NextResponse.json({ success: true, message: 'Data published successfully' }));
+                    resolve(NextResponse.json({ success: true, message: 'Data published successfully' }, { headers }));
                 }
             });
         });
@@ -168,7 +203,7 @@ export async function POST(request: NextRequest) {
                 error: 'Internal server error',
                 details: error instanceof Error ? error.message : String(error)
             },
-            { status: 500 }
+            { status: 500, headers }
         );
     }
 } 

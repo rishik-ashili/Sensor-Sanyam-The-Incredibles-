@@ -8,29 +8,62 @@ from datetime import datetime
 import sys
 import socket
 import urllib3
+import base64
+import argparse
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# Default Configuration
+DEFAULT_CONFIG = {
+    "api_endpoint": "http://localhost:9003/api/sensor-data",  # Change this to your deployed API URL
+    "username": "sensorflow",
+    "password": "sensorflow123",
+    "device_id": "rpi3",  # Change this to identify your device
+    "location": {
+        "lat": 19.0760,
+        "lon": 72.8777
+    }
+}
+
+def parse_arguments():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='MQTT Publisher for Sensor Data')
+    parser.add_argument('--api', help='API endpoint URL', default=DEFAULT_CONFIG["api_endpoint"])
+    parser.add_argument('--username', help='API username', default=DEFAULT_CONFIG["username"])
+    parser.add_argument('--password', help='API password', default=DEFAULT_CONFIG["password"])
+    parser.add_argument('--device', help='Device ID', default=DEFAULT_CONFIG["device_id"])
+    parser.add_argument('--lat', type=float, help='Device latitude', default=DEFAULT_CONFIG["location"]["lat"])
+    parser.add_argument('--lon', type=float, help='Device longitude', default=DEFAULT_CONFIG["location"]["lon"])
+    return parser.parse_args()
+
+# Get configuration from command line arguments
+args = parse_arguments()
+
 # API Configuration
-API_ENDPOINT = "http://localhost:9003/api/sensor-data"
-MAX_RETRIES = 10  # Increased retries
+API_ENDPOINT = args.api
+API_USERNAME = args.username
+API_PASSWORD = args.password
+DEVICE_ID = args.device
+DEVICE_LOCATION = {"lat": args.lat, "lon": args.lon}
+
+MAX_RETRIES = 10
 RETRY_DELAY = 2  # seconds
 
+def get_auth_header():
+    """Generate Basic Auth header."""
+    credentials = f"{API_USERNAME}:{API_PASSWORD}"
+    encoded = base64.b64encode(credentials.encode()).decode()
+    return f"Basic {encoded}"
+
 def check_server_availability():
-    """Check if the Next.js server is running and accessible."""
+    """Check if the API server is running and accessible."""
     try:
-        # Try to connect to the server
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(2)
-        result = sock.connect_ex(('localhost', 9003))
-        sock.close()
-        
-        if result == 0:
-            # Try a simple HTTP request to verify the API is responding
-            response = requests.get("http://localhost:9003", timeout=2)
-            return response.status_code < 500
-        return False
+        response = requests.get(API_ENDPOINT, 
+                              headers={"Authorization": get_auth_header()},
+                              timeout=2,
+                              verify=False)
+        return response.status_code < 500
     except:
         return False
 
@@ -47,7 +80,7 @@ def wait_for_server():
 
 # Configure retry strategy
 retry_strategy = Retry(
-    total=5,  # Increased retries
+    total=5,
     backoff_factor=1,
     status_forcelist=[500, 502, 503, 504],
     allowed_methods=["POST", "GET"]
@@ -116,15 +149,24 @@ def send_sensor_data(sensor_index: int, value: float, energy: float):
             "value": round(value, 2),
             "timestamp": datetime.utcnow().isoformat(),
             "unit": sensor["unit"],
-            "device": "rpi3",
-            "coordinates": {"lat": 19.0760, "lon": 72.8777},
+            "device": DEVICE_ID,
+            "coordinates": DEVICE_LOCATION,
             "threshold": sensor["threshold"],
             "energy": round(energy, 2)
         }
         
         print(f"[DEBUG] Attempting to send data for {sensor['name']}: {payload}")
         
-        response = session.post(API_ENDPOINT, json=payload, timeout=5, verify=False)
+        headers = {
+            "Authorization": get_auth_header(),
+            "Content-Type": "application/json"
+        }
+        
+        response = session.post(API_ENDPOINT, 
+                              json=payload, 
+                              headers=headers,
+                              timeout=5, 
+                              verify=False)
         response.raise_for_status()
         
         result = response.json()
@@ -135,7 +177,7 @@ def send_sensor_data(sensor_index: int, value: float, energy: float):
             
     except requests.exceptions.ConnectionError as e:
         print(f"[ERROR] Connection failed: {e}")
-        print("[INFO] Make sure the Next.js server is running on port 9003")
+        print("[INFO] Make sure the API server is running and accessible")
         if not wait_for_server():
             print("[FATAL] Could not connect to server after multiple retries")
             sys.exit(1)
@@ -149,9 +191,13 @@ def send_sensor_data(sensor_index: int, value: float, energy: float):
         print(f"[ERROR] Unexpected error: {e}")
 
 def main():
+    print(f"\n[CONFIG] Using API endpoint: {API_ENDPOINT}")
+    print(f"[CONFIG] Device ID: {DEVICE_ID}")
+    print(f"[CONFIG] Location: {DEVICE_LOCATION}\n")
+
     # Check server availability before starting
     if not wait_for_server():
-        print("[FATAL] Could not connect to server. Please make sure the Next.js server is running.")
+        print("[FATAL] Could not connect to server. Please make sure the API server is running and accessible.")
         sys.exit(1)
 
     print("\n[STARTUP] Beginning initial burst publish...")
