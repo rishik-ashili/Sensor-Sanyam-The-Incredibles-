@@ -13,7 +13,7 @@ export default function AppLayout({ children }: AppLayoutProps) {
         {children}
       </main>
       <footer className="py-4 text-center text-sm text-muted-foreground">
-        SensorFlow Dashboard &copy; {new Date().getFullYear()}
+        <img src="/logo.png" alt="Dashboard Logo" className="h-10 w-auto inline-block align-middle drop-shadow-lg" /> &copy; {new Date().getFullYear()}
       </footer>
     </>
   );

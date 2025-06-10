@@ -52,9 +52,7 @@ export default function AuthPage() {
             <Card className="w-full max-w-xs sm:max-w-md shadow-2xl rounded-2xl animate-fade-in" sx={{ borderRadius: 4, boxShadow: 8, p: { xs: 1, sm: 2 } }}>
                 <CardContent className="flex flex-col items-center p-2 sm:p-6">
                     <div className="mb-6 text-center w-full">
-                        <Typography variant="h4" component="h1" className="font-headline" sx={{ color: '#4338ca', fontWeight: 700, mb: 1 }}>
-                            SensorFlow Dashboard
-                        </Typography>
+                        <img src="/logo.png" alt="Dashboard Logo" className="mx-auto mb-4 h-24 w-auto drop-shadow-lg" />
                         <Typography variant="body2" sx={{ color: '#64748b' }}>
                             Sign {isSignup ? 'Up' : 'In'} to continue
                         </Typography>

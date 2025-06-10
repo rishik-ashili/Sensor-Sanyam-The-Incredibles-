@@ -16,8 +16,7 @@ export default function Header() {
     <header className="bg-card shadow-sm sticky top-0 z-40 border-b border-border">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2 text-primary hover:text-primary/90 transition-colors">
-          <MountainIcon className="h-6 w-6" />
-          <span className="text-xl font-semibold font-headline">SensorFlow Dashboard</span>
+          <img src="/logo.png" alt="Dashboard Logo" className="h-14 w-auto drop-shadow-lg" />
         </Link>
         {/* Desktop Nav */}
         <nav className="hidden md:flex items-center gap-4">
