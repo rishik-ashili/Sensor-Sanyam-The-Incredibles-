@@ -1287,8 +1287,8 @@ function DashboardPage({ isAdmin }: { isAdmin: boolean }) {
                         breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
                         cols={{ lg: 6, md: 4, sm: 2, xs: 1, xxs: 1 }}
                         rowHeight={80}
-                        isResizable={isAdmin}
-                        isDraggable={isAdmin}
+                        isResizable={true}
+                        isDraggable={true}
                         onLayoutChange={(l: Layout[]) => setLayoutByDevice(prev => ({ ...prev, [device]: l }))}
                         measureBeforeMount={false}
                         useCSSTransforms={true}
@@ -1323,15 +1323,14 @@ function DashboardPage({ isAdmin }: { isAdmin: boolean }) {
                             <div key={sensor.topic} data-grid={grid} className="min-w-[280px] max-w-full sm:min-w-[320px]">
                               <Card className="hover:shadow-xl transition-shadow duration-300 ease-in-out border border-border relative w-full max-w-full">
                                 <div className="absolute top-2 right-2 flex gap-2 z-10">
+                                  {/* Minimize always enabled, delete only for admin */}
+                                  <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
+                                    {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
+                                  </Button>
                                   {isAdmin && (
-                                    <>
-                                      <Button size="icon" variant="ghost" onClick={() => setMinimized(m => ({ ...m, [sensor.topic]: !m[sensor.topic] }))} title={minimized[sensor.topic] ? 'Maximize' : 'Minimize'}>
-                                        {minimized[sensor.topic] ? <ChevronDown className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-180" />}
-                                      </Button>
-                                      <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
-                                        <XCircle className="h-4 w-4" />
-                                      </Button>
-                                    </>
+                                    <Button size="icon" variant="destructive" onClick={() => setDeleted(d => ({ ...d, [sensor.topic]: true }))} title="Delete">
+                                      <XCircle className="h-4 w-4" />
+                                    </Button>
                                   )}
                                 </div>
                                 <CardHeader className="pb-2">

@@ -72,30 +72,30 @@ export default function SensorConfigForm() {
   };
 
   return (
-    <Card>
+    <Card className="w-full max-w-md mx-auto">
       <CardHeader>
         <CardTitle className="font-headline">Sensor Configuration</CardTitle>
         <CardDescription>
           Manage your Raspberry Pi devices and their sensors. Add, edit, and remove configurations below.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-6 p-2 sm:p-6">
         <div className="space-y-2">
           <h3 className="text-lg font-medium font-headline">Add New Device</h3>
           <p className="text-sm text-muted-foreground">
             Add a new Raspberry Pi device, specify MQTT broker, and define sensor types.
           </p>
         </div>
-        <form className="space-y-4" onSubmit={handleAdd}>
+        <form className="space-y-4 w-full" onSubmit={handleAdd}>
           <div>
             <Label htmlFor="deviceName">Device Name</Label>
-            <Input id="deviceName" placeholder="e.g., Living Room Pi" value={deviceName} onChange={e => setDeviceName(e.target.value)} required />
+            <Input id="deviceName" placeholder="e.g., Living Room Pi" value={deviceName} onChange={e => setDeviceName(e.target.value)} required className="w-full" />
           </div>
           <div>
             <Label htmlFor="mqttBroker">MQTT Broker URL</Label>
-            <Input id="mqttBroker" placeholder="e.g., mqtt://localhost:1883" value={broker} onChange={e => setBroker(e.target.value)} required />
+            <Input id="mqttBroker" placeholder="e.g., mqtt://localhost:1883" value={broker} onChange={e => setBroker(e.target.value)} required className="w-full" />
           </div>
-          <Button type="submit">Save Configuration</Button>
+          <Button type="submit" className="w-full sm:w-auto">Save Configuration</Button>
         </form>
         <div className="space-y-2">
           <h3 className="text-lg font-medium font-headline">Configured Devices</h3>
@@ -108,9 +108,9 @@ export default function SensorConfigForm() {
             ) : (
               <ul className="space-y-2">
                 {devices.map(d => (
-                  <li key={d.name} className="flex items-center justify-between">
+                  <li key={d.name} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                     <span>{d.name} <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Custom MQTT</span></span>
-                    <Button size="sm" variant="destructive" onClick={() => handleRemove(d.name)}>Remove</Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleRemove(d.name)} className="w-full sm:w-auto">Remove</Button>
                   </li>
                 ))}
               </ul>

@@ -16,6 +16,7 @@ const GradientBg = styled('div')({
     alignItems: 'center',
     justifyContent: 'center',
     background: 'linear-gradient(135deg, #e0e7ff 0%, #6366f1 100%)',
+    padding: '1rem',
 });
 
 export default function AuthPage() {
@@ -48,8 +49,8 @@ export default function AuthPage() {
 
     return (
         <GradientBg>
-            <Card className="w-full max-w-md shadow-2xl rounded-2xl animate-fade-in" sx={{ borderRadius: 4, boxShadow: 8, p: 2 }}>
-                <CardContent className="flex flex-col items-center">
+            <Card className="w-full max-w-xs sm:max-w-md shadow-2xl rounded-2xl animate-fade-in" sx={{ borderRadius: 4, boxShadow: 8, p: { xs: 1, sm: 2 } }}>
+                <CardContent className="flex flex-col items-center p-2 sm:p-6">
                     <div className="mb-6 text-center w-full">
                         <Typography variant="h4" component="h1" className="font-headline" sx={{ color: '#4338ca', fontWeight: 700, mb: 1 }}>
                             SensorFlow Dashboard
@@ -76,7 +77,7 @@ export default function AuthPage() {
                         </Tabs>
                     )}
 
-                    <form className="w-full" onSubmit={handleSubmit} autoComplete="off">
+                    <form className="w-full space-y-2" onSubmit={handleSubmit} autoComplete="off">
                         <TextField
                             label="Username"
                             variant="outlined"

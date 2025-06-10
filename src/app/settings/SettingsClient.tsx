@@ -9,12 +9,12 @@ export default function SettingsClient() {
     const isAdmin = role === 'admin';
 
     return (
-        <div className="space-y-8">
-            <h1 className="text-3xl font-headline font-semibold">Settings</h1>
+        <div className="space-y-8 w-full max-w-md mx-auto px-2 sm:px-0">
+            <h1 className="text-3xl font-headline font-semibold text-center">Settings</h1>
             {isAdmin ? (
                 <SensorConfigForm />
             ) : (
-                <Card>
+                <Card className="w-full">
                     <CardHeader>
                         <CardTitle className="font-headline">Access Restricted</CardTitle>
                         <CardDescription>
