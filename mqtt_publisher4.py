@@ -5,6 +5,8 @@ import random
 from datetime import datetime
 from Crypto.Cipher import AES
 import base64
+import os
+from dotenv import load_dotenv
 
 # ========== CONFIGURATION ==========
 MQTT_BROKER = "mqtt://localhost:1883"  # <-- Change this to your broker URL
@@ -14,8 +16,9 @@ MQTT_PORT = 1883
 BASE_TOPIC = "sensorflow/demo"
 DEVICE_NAME = "rpi4"
 
-ENCRYPTION_KEY = b'12345678901234567890123456789012'  # 32 bytes
-IV = b'1234567890123456'  # 16 bytes
+load_dotenv()
+ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', '').encode('utf-8')
+IV = os.environ.get('IV', '').encode('utf-8')
 
 def encrypt_data(data):
     json_data = json.dumps(data).encode('utf-8')

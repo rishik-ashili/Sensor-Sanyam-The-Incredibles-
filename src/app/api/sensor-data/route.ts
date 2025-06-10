@@ -10,8 +10,8 @@ const API_USERNAME = process.env.API_USERNAME || 'sensorflow';
 const API_PASSWORD = process.env.API_PASSWORD || 'sensorflow123';
 
 // Encryption Configuration
-const ENCRYPTION_KEY = Buffer.from('12345678901234567890123456789012', 'utf-8');
-const IV = Buffer.from('1234567890123456', 'utf-8');
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY!, 'utf-8');
+const IV = Buffer.from(process.env.IV!, 'utf-8');
 
 // Keep a single MQTT client instance
 let client: mqtt.MqttClient | null = null;

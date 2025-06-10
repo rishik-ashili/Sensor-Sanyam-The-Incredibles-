@@ -6,6 +6,8 @@ from datetime import datetime
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 import base64
+import os
+from dotenv import load_dotenv
 
 # MQTT Configuration
 MQTT_BROKER = "broker.hivemq.com"
@@ -13,8 +15,9 @@ MQTT_PORT = 1883
 BASE_TOPIC = "sensorflow/demo"
 
 # Encryption Configuration
-ENCRYPTION_KEY = b'12345678901234567890123456789012'  # Exactly 32 bytes for AES-256
-IV = b'1234567890123456'  # Exactly 16 bytes for AES
+load_dotenv()
+ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', '').encode('utf-8')
+IV = os.environ.get('IV', '').encode('utf-8')
 
 def encrypt_data(data: dict) -> str:
     """Encrypt the sensor data using AES-256-CBC with PKCS7 padding, matching Node.js/CryptoJS."""
