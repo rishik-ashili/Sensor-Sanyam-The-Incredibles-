@@ -17,18 +17,14 @@ ENCRYPTION_KEY = b'12345678901234567890123456789012'  # Exactly 32 bytes for AES
 IV = b'1234567890123456'  # Exactly 16 bytes for AES
 
 def encrypt_data(data: dict) -> str:
-    """Encrypt the sensor data using AES-256-CBC."""
+    """Encrypt the sensor data using AES-256-CBC with PKCS7 padding, matching Node.js/CryptoJS."""
     try:
-        # Convert dict to JSON string
-        json_data = json.dumps(data)
-        # Convert to bytes
+        # Use compact JSON (no spaces)
+        json_data = json.dumps(data, separators=(',', ':'))
         data_bytes = json_data.encode('utf-8')
-        # Create cipher
         cipher = AES.new(ENCRYPTION_KEY, AES.MODE_CBC, IV)
-        # Pad and encrypt
-        padded_data = pad(data_bytes, AES.block_size)
+        padded_data = pad(data_bytes, AES.block_size, style='pkcs7')
         encrypted_data = cipher.encrypt(padded_data)
-        # Convert to base64 for MQTT transmission
         return base64.b64encode(encrypted_data).decode('utf-8')
     except Exception as e:
         print(f"Encryption error: {e}")
