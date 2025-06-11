@@ -231,9 +231,10 @@ The layout automatically adjusts based on screen size and device type.
 [![Watch the video](https://img.youtube.com/vi/dg13FC4ospw/hqdefault.jpg)](https://youtu.be/dg13FC4ospw)
 
 ## Screenshots
-![WhatsApp Image 2025-06-10 at 23 52 17](https://github.com/user-attachments/assets/536ecc3c-d0af-456a-9bcf-c46ef346ca42)
-![WhatsApp Image 2025-06-10 at 23 52 37](https://github.com/user-attachments/assets/a29f013a-90c4-4937-bcf9-0d921c4d4396)
-![WhatsApp Image 2025-06-10 at 23 54 19](https://github.com/user-attachments/assets/dacaa382-0468-42bd-9641-2064c7368290)
+![WhatsApp Image 2025-06-10 at 23 52 11_bb24931b](https://github.com/user-attachments/assets/55855b18-b658-454f-afb9-022e61949d2a)
+![WhatsApp Image 2025-06-10 at 23 52 31_120e0eed](https://github.com/user-attachments/assets/729ea773-40f5-4aa0-b316-d519777b807f)
+![WhatsApp Image 2025-06-10 at 23 54 13_0aa486c4](https://github.com/user-attachments/assets/8c0871cf-b6cc-48aa-9893-34e627ed4c96)
+
 
 ## System Architecture
 ![architecture](https://github.com/user-attachments/assets/1dd04723-0ad8-4ed2-9e57-be198f52a380)
