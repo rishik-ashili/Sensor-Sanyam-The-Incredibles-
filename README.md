@@ -1,5 +1,6 @@
 # Sensor Sanyam
-![logo](https://github.com/user-attachments/assets/7db1853f-edd7-42c1-a9e2-af06a553adda)
+![logo](https://github.com/user-attachments/assets/7f052e05-05e1-4090-ade5-d6db49aef16e)
+
 
 
 A comprehensive real-time monitoring dashboard for industrial IoT devices with advanced features for machine status monitoring, energy consumption tracking, and environmental parameter management.
