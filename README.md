@@ -1,9 +1,16 @@
 # Sensor Sanyam
 ![logo](https://github.com/user-attachments/assets/7f052e05-05e1-4090-ade5-d6db49aef16e)
 
-
-
 A comprehensive real-time monitoring dashboard for industrial IoT devices with advanced features for machine status monitoring, energy consumption tracking, and environmental parameter management.
+
+## Demo Video
+[![Watch the video](https://img.youtube.com/vi/dg13FC4ospw/hqdefault.jpg)](https://youtu.be/dg13FC4ospw)
+
+## Screenshots
+![WhatsApp Image 2025-06-10 at 23 52 11_bb24931b](https://github.com/user-attachments/assets/55855b18-b658-454f-afb9-022e61949d2a)
+![WhatsApp Image 2025-06-10 at 23 52 31_120e0eed](https://github.com/user-attachments/assets/729ea773-40f5-4aa0-b316-d519777b807f)
+![WhatsApp Image 2025-06-10 at 23 54 13_0aa486c4](https://github.com/user-attachments/assets/8c0871cf-b6cc-48aa-9893-34e627ed4c96)
+
 
 ## Novel Features
 
@@ -228,13 +235,6 @@ The dashboard is fully responsive and works on:
 
 The layout automatically adjusts based on screen size and device type.
 
-## Demo Video
-[![Watch the video](https://img.youtube.com/vi/dg13FC4ospw/hqdefault.jpg)](https://youtu.be/dg13FC4ospw)
-
-## Screenshots
-![WhatsApp Image 2025-06-10 at 23 52 11_bb24931b](https://github.com/user-attachments/assets/55855b18-b658-454f-afb9-022e61949d2a)
-![WhatsApp Image 2025-06-10 at 23 52 31_120e0eed](https://github.com/user-attachments/assets/729ea773-40f5-4aa0-b316-d519777b807f)
-![WhatsApp Image 2025-06-10 at 23 54 13_0aa486c4](https://github.com/user-attachments/assets/8c0871cf-b6cc-48aa-9893-34e627ed4c96)
 
 
 ## System Architecture
